@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-contract main {
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract main is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    IERC20 public immutable usdc = IERC20(0x8A93d247134d91e0de6f96547cB0204e5BE8e5D8);
+
     enum Category { Health, Financial, Education, Technology, Other }
 
     struct Campaign {
@@ -84,13 +92,16 @@ contract main {
         return (balance, contributeAmount, takenShare);
     }
 
-    function stake () public payable {
-        virtualBalances[msg.sender] += msg.value;
+    function stake(uint256 amount) external nonReentrant {
+        require(amount > 0, "amount = 0");
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
+        virtualBalances[msg.sender] += amount;
     }
 
-    function withdraw (uint amount) public {
-        require(virtualBalances[msg.sender] >= amount, "Insufficient virtual balance");
+    function withdraw(uint256 amount) external nonReentrant {
+        require(amount > 0, "amount = 0");
+        require(virtualBalances[msg.sender] >= amount, "insufficient balance");
         virtualBalances[msg.sender] -= amount;
-        payable(msg.sender).transfer(amount);
+        usdc.safeTransfer(msg.sender, amount);
     }
-}    
+}
