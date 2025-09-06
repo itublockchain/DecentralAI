@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../config/logger';
+import { ContributeService } from '../services/contribute.service';
+
+const contributeService = new ContributeService();
 
 export const contribute = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -12,21 +15,24 @@ export const contribute = async (req: Request, res: Response, next: NextFunction
             });
         }
 
-        logger.info('Contribute request received', {
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'File is required'
+            });
+        }
+
+        const result = await contributeService.processContribution({
             walletAddress: user.walletAddress,
             email: user.email,
-            sub: user.sub
+            name: user.name,
+            sub: user.sub,
+            file
         });
 
-        res.status(200).json({
-            message: 'Contribution received successfully',
-            user: {
-                walletAddress: user.walletAddress,
-                email: user.email,
-                name: user.name,
-                sub: user.sub
-            }
-        });
+        res.status(200).json(result);
     } catch (error) {
         logger.error('Error in contribute controller', { error });
         next(error);
