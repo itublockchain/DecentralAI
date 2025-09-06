@@ -3,22 +3,18 @@
 import { useState, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Progress } from "@/components/ui/progress"
+import { Label } from "@/components/ui/label"
 import {
   Check,
   Upload,
   Shield,
   Lock,
   FileText,
-  Star,
   ArrowLeft,
   ArrowRight,
   CheckCircle,
-  DollarSign,
   Clock,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -35,11 +31,10 @@ interface ContributeDataModalProps {
 export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataModalProps) {
   const [currentStep, setCurrentStep] = useState(1)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
-  const [selectedCategory, setSelectedCategory] = useState("")
-  const [qualityRating, setQualityRating] = useState(0)
-  const [encryptionProgress, setEncryptionProgress] = useState(0)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [contributionId, setContributionId] = useState("")
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
 
   const acceptedFormats = [
@@ -50,31 +45,62 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
     { type: "DOCX", description: "Word documents" },
   ]
 
-  const categories = [
-    "Medical Literature",
-    "Clinical Trials",
-    "Case Studies",
-    "Research Papers",
-    "Treatment Outcomes",
-    "Diagnostic Data",
-  ]
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setUploadedFiles((prev) => [...prev, ...acceptedFiles])
+    toast({
+      title: "Files uploaded",
+      description: `Successfully uploaded ${acceptedFiles.length} file(s)`,
+    })
+  }, [toast])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(true)
   }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    
+    const files = Array.from(e.dataTransfer.files)
+    const validFiles = files.filter(file => {
+      const extension = file.name.split('.').pop()?.toLowerCase()
+      return ['csv', 'json', 'txt', 'pdf', 'docx'].includes(extension || '')
+    })
+    
+    if (validFiles.length !== files.length) {
+      toast({
+        title: "Some files rejected",
+        description: "Only CSV, JSON, TXT, PDF, and DOCX files are accepted",
+        variant: "destructive"
+      })
+    }
+    
+    if (validFiles.length > 0) {
+      onDrop(validFiles)
+    }
+  }, [onDrop, toast])
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) {
+      onDrop(files)
+    }
+  }, [onDrop])
 
   const removeFile = (index: number) => {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleNext = () => {
-    if (currentStep < 5) {
+    if (currentStep < 4) {
       setCurrentStep(currentStep + 1)
-
-      // Start encryption animation on step 3
-      if (currentStep === 2) {
-        simulateEncryption()
-      }
     }
   }
 
@@ -84,37 +110,80 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
     }
   }
 
-  const simulateEncryption = () => {
-    setEncryptionProgress(0)
-    const interval = setInterval(() => {
-      setEncryptionProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          return 100
-        }
-        return prev + Math.random() * 15
-      })
-    }, 200)
-  }
 
-  const handleSubmit = () => {
-    // Generate contribution ID
-    setContributionId("CONTRIB-" + Math.random().toString(36).substring(2, 10).toUpperCase())
-    setCurrentStep(5)
+  const handleSubmit = async () => {
+    setIsSubmitting(true)
+    
+    try {
+      const rawToken = localStorage.getItem('dynamic_authentication_token')
+      
+      if (!rawToken) {
+        toast({
+          title: "Authentication Error",
+          description: "Please log in to contribute data",
+          variant: "destructive"
+        })
+        return
+      }
+
+      // Remove quotes from token if they exist
+      const token = rawToken.replace(/^"(.*)"$/, '$1')
+
+      // Create FormData for file upload
+      const formData = new FormData()
+      
+      // Add all uploaded files
+      uploadedFiles.forEach((file) => {
+        formData.append('file', file)
+      })
+
+      const response = await fetch('http://localhost:4000/api/contribute', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      
+      // Generate contribution ID from response or use random
+      setContributionId(result.contributionId || "CONTRIB-" + Math.random().toString(36).substring(2, 10).toUpperCase())
+      
+      toast({
+        title: "Success!",
+        description: "Your data has been successfully contributed"
+      })
+      
+      setCurrentStep(4)
+      
+    } catch (error) {
+      console.error('Contribution error:', error)
+      toast({
+        title: "Upload Failed",
+        description: "There was an error uploading your data. Please try again.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const resetModal = () => {
     setCurrentStep(1)
     setUploadedFiles([])
-    setSelectedCategory("")
-    setQualityRating(0)
-    setEncryptionProgress(0)
     setTermsAccepted(false)
     setContributionId("")
+    setIsDragOver(false)
+    setIsSubmitting(false)
     onClose()
   }
 
-  const estimatedEarnings = uploadedFiles.length * qualityRating * 25 + Math.floor(Math.random() * 100)
+  const estimatedEarnings = uploadedFiles.length * 50 + Math.floor(Math.random() * 100)
 
   return (
     <Dialog open={isOpen} onOpenChange={resetModal}>
@@ -128,7 +197,7 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
 
         {/* Progress Steps */}
         <div className="flex items-center justify-between mb-6">
-          {[1, 2, 3, 4, 5].map((step) => (
+          {[1, 2, 3, 4].map((step) => (
             <div key={step} className="flex items-center">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
@@ -137,7 +206,7 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
               >
                 {step < currentStep ? <Check className="h-4 w-4" /> : step}
               </div>
-              {step < 5 && <div className={`w-8 h-0.5 mx-1 ${step < currentStep ? "bg-primary" : "bg-muted"}`} />}
+              {step < 4 && <div className={`w-8 h-0.5 mx-1 ${step < currentStep ? "bg-primary" : "bg-muted"}`} />}
             </div>
           ))}
         </div>
@@ -213,13 +282,34 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
             <h3 className="text-lg font-semibold text-foreground">Upload Your Data</h3>
 
             {/* File Upload Zone */}
-            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
+            <div 
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                isDragOver 
+                  ? "border-primary bg-primary/5" 
+                  : "border-border hover:border-primary/50"
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <div className="text-lg font-medium text-foreground mb-2">Drag & drop files here, or click to browse</div>
               <div className="text-sm text-muted-foreground mb-4">
                 Supports CSV, JSON, TXT, PDF, DOCX files up to 100MB each
               </div>
-              <Button variant="outline">Choose Files</Button>
+              <input
+                type="file"
+                multiple
+                accept=".csv,.json,.txt,.pdf,.docx"
+                onChange={handleFileSelect}
+                className="hidden"
+                id="file-upload"
+              />
+              <Button variant="outline" asChild>
+                <label htmlFor="file-upload" className="cursor-pointer">
+                  Choose Files
+                </label>
+              </Button>
             </div>
 
             {/* Uploaded Files */}
@@ -243,97 +333,13 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
               </div>
             )}
 
-            {/* Category Selection */}
-            <div className="space-y-3">
-              <Label>Data Category</Label>
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select the type of data you're contributing" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Quality Self-Assessment */}
-            <div className="space-y-3">
-              <Label>Quality Self-Assessment</Label>
-              <div className="flex items-center gap-2">
-                {[1, 2, 3, 4, 5].map((rating) => (
-                  <button
-                    key={rating}
-                    onClick={() => setQualityRating(rating)}
-                    className={`p-1 rounded ${rating <= qualityRating ? "text-yellow-400" : "text-muted-foreground"}`}
-                  >
-                    <Star className={`h-6 w-6 ${rating <= qualityRating ? "fill-current" : ""}`} />
-                  </button>
-                ))}
-                <span className="text-sm text-muted-foreground ml-2">
-                  {qualityRating === 0 && "Rate your data quality"}
-                  {qualityRating === 1 && "Basic quality"}
-                  {qualityRating === 2 && "Fair quality"}
-                  {qualityRating === 3 && "Good quality"}
-                  {qualityRating === 4 && "High quality"}
-                  {qualityRating === 5 && "Excellent quality"}
-                </span>
-              </div>
-            </div>
           </div>
         )}
 
-        {/* Step 3: Encryption */}
+        {/* Step 3: Confirmation */}
         {currentStep === 3 && (
-          <div className="space-y-6 text-center">
-            <div className="mx-auto w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-              <Lock className="h-12 w-12 text-primary animate-pulse" />
-            </div>
-
-            <h3 className="text-lg font-semibold text-foreground">Encrypting Your Data</h3>
-            <p className="text-muted-foreground">
-              Your data is being encrypted with ROFL public key for maximum security
-            </p>
-
-            <div className="space-y-3">
-              <Progress value={encryptionProgress} className="w-full" />
-              <div className="text-sm text-muted-foreground">
-                {encryptionProgress < 100 ? `Encrypting... ${Math.round(encryptionProgress)}%` : "Encryption Complete!"}
-              </div>
-            </div>
-
-            {encryptionProgress >= 100 && (
-              <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-                <div className="flex items-center justify-center gap-2 text-green-800 dark:text-green-200">
-                  <CheckCircle className="h-5 w-5" />
-                  <span className="font-medium">Data successfully encrypted</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 4: Confirmation */}
-        {currentStep === 4 && (
           <div className="space-y-6">
             <h3 className="text-lg font-semibold text-foreground">Confirm Contribution</h3>
-
-            {/* Earnings Estimate */}
-            <Card className="border-green-200 bg-green-50 dark:bg-green-900/20">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="h-5 w-5 text-green-600" />
-                  <span className="font-semibold text-green-800 dark:text-green-200">Estimated Earnings</span>
-                </div>
-                <div className="text-2xl font-bold text-green-800 dark:text-green-200">${estimatedEarnings}</div>
-                <div className="text-sm text-green-700 dark:text-green-300">
-                  Based on {uploadedFiles.length} files with {qualityRating}-star quality rating
-                </div>
-              </CardContent>
-            </Card>
 
             {/* Contribution Summary */}
             <div className="space-y-3">
@@ -342,14 +348,6 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Files:</span>
                   <span className="text-foreground">{uploadedFiles.length}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Category:</span>
-                  <span className="text-foreground">{selectedCategory}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Quality Rating:</span>
-                  <span className="text-foreground">{qualityRating} stars</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Model:</span>
@@ -373,8 +371,8 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
           </div>
         )}
 
-        {/* Step 5: Success */}
-        {currentStep === 5 && (
+        {/* Step 4: Success */}
+        {currentStep === 4 && (
           <div className="space-y-6 text-center">
             <CheckCircle className="h-16 w-16 text-green-600 mx-auto" />
 
@@ -414,27 +412,24 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
         )}
 
         {/* Navigation Buttons */}
-        {currentStep < 5 && (
+        {currentStep < 4 && (
           <div className="flex justify-between pt-4">
             <Button variant="outline" onClick={handleBack} disabled={currentStep === 1}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
             <Button
-              onClick={currentStep === 4 ? handleSubmit : handleNext}
+              onClick={currentStep === 3 ? handleSubmit : handleNext}
               disabled={
-                (currentStep === 2 && (uploadedFiles.length === 0 || !selectedCategory || qualityRating === 0)) ||
-                (currentStep === 3 && encryptionProgress < 100) ||
-                (currentStep === 4 && !termsAccepted)
+                (currentStep === 2 && uploadedFiles.length === 0) ||
+                (currentStep === 3 && (!termsAccepted || isSubmitting))
               }
             >
-              {currentStep === 4 ? (
+              {currentStep === 3 ? (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Submit Contribution
+                  {isSubmitting ? "Submitting..." : "Submit Contribution"}
                 </>
-              ) : currentStep === 3 && encryptionProgress < 100 ? (
-                "Encrypting..."
               ) : (
                 <>
                   Next
