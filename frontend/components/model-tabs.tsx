@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Star } from "lucide-react"
 import { ApiPlayground } from "@/components/api-playground"
+import { ModelChat } from "@/components/model-chat"
 
 interface ModelTabsProps {
   model: {
@@ -16,6 +17,7 @@ interface ModelTabsProps {
     lastUpdated: string
     accuracy: number
     price: number
+    id?: string
   }
 }
 
@@ -25,8 +27,9 @@ export function ModelTabs({ model }: ModelTabsProps) {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-8">
+        <TabsList className="grid w-full grid-cols-5 mb-8">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="chat">Chat</TabsTrigger>
           <TabsTrigger value="technical">Technical Specs</TabsTrigger>
           <TabsTrigger value="api-docs">API Docs</TabsTrigger>
           <TabsTrigger value="reviews">Reviews</TabsTrigger>
@@ -59,6 +62,10 @@ export function ModelTabs({ model }: ModelTabsProps) {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="chat" className="space-y-6">
+          <ModelChat campaignId={model.id || "2"} modelName={model.name} />
         </TabsContent>
 
         <TabsContent value="technical" className="space-y-6">

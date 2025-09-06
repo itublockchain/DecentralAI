@@ -15,6 +15,7 @@ export default function ModelDetailPage({ params }: { params: { id: string } }) 
 
   const detailModel = {
     ...model,
+    id: params.id,
     creator: "AI Research Labs", // Default creator
     baseModel: "GPT-4 Turbo",
     parameters: "175B",
