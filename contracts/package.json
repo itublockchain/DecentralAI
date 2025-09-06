@@ -1,6 +1,4 @@
 {
-  "name": "contracts",
-  "version": "1.0.0",
   "scripts": {
     "sepolia": "hardhat run ./scripts/deploy.js --network sepolia",
     "mainnet": "hardhat run ./scripts/deploy.js --network mainnet",
