@@ -33,6 +33,10 @@ contract main is ReentrancyGuard {
 
     constructor (address rofl) {admin = rofl; idCounter = 0;}
 
+    function get_campaigns_length() public view returns (uint) {
+        return campaigns.length;
+    }
+
     function vector_db_update (uint campaignId, string memory cid) public {
         require(msg.sender == admin, "Only admin can update vector DB");
         campaigns[campaignId].vector_db_cid = cid;
