@@ -83,4 +83,14 @@ contract main {
 
         return (balance, contributeAmount, takenShare);
     }
+
+    function stake () public payable {
+        virtualBalances[msg.sender] += msg.value;
+    }
+
+    function withdraw (uint amount) public {
+        require(virtualBalances[msg.sender] >= amount, "Insufficient virtual balance");
+        virtualBalances[msg.sender] -= amount;
+        payable(msg.sender).transfer(amount);
+    }
 }    
