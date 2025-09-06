@@ -15,9 +15,10 @@ interface ModelActionsProps {
     inputTokenPrice: number
     outputTokenPrice: number
   }
+  campaignId: string
 }
 
-export function ModelActions({ model }: ModelActionsProps) {
+export function ModelActions({ model, campaignId }: ModelActionsProps) {
   const [isRentModalOpen, setIsRentModalOpen] = useState(false)
   const [isContributeModalOpen, setIsContributeModalOpen] = useState(false)
 
@@ -83,6 +84,7 @@ export function ModelActions({ model }: ModelActionsProps) {
           isOpen={isContributeModalOpen}
           onClose={() => setIsContributeModalOpen(false)}
           model={model}
+          campaignId={campaignId}
         />
       </>
     )

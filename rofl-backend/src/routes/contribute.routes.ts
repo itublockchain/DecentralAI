@@ -5,6 +5,6 @@ import { uploadSingle } from '../middlewares/upload.middleware';
 
 const router = Router();
 
-router.post('/contribute', dynamicWalletAuth, uploadSingle, contribute);
+router.post('/:campaignId', dynamicWalletAuth, uploadSingle, contribute);
 
 export { router as contributeRoutes };

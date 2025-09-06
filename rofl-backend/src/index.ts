@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { contributeRoutes } from './routes/contribute.routes';
+import { campaignQueryRoutes } from './routes/campaign-query.routes';
+import { jobRoutes } from './routes/job.routes';
 import { errorHandler } from './middlewares/error-handler.middleware';
 
 const app = express();
@@ -20,7 +22,9 @@ app.get('/health', (req, res) => {
     });
 });
 
-app.use('/api', contributeRoutes);
+app.use('/api/contribute', contributeRoutes);
+app.use('/api/campaigns', campaignQueryRoutes);
+app.use('/api/jobs', jobRoutes);
 
 app.use(errorHandler);
 

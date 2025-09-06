@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -26,9 +26,10 @@ interface ContributeDataModalProps {
     name: string
     domain: string
   }
+  campaignId: string
 }
 
-export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataModalProps) {
+export function ContributeDataModal({ isOpen, onClose, model, campaignId }: ContributeDataModalProps) {
   const [currentStep, setCurrentStep] = useState(1)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [termsAccepted, setTermsAccepted] = useState(false)
@@ -36,6 +37,28 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
   const [isDragOver, setIsDragOver] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
+
+  // Check authentication when modal opens
+  const checkAuth = () => {
+    const token = localStorage.getItem('dynamic_authentication_token')
+    if (!token && isOpen) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to contribute data",
+        variant: "destructive"
+      })
+      onClose()
+      // Redirect to login - adjust this path as needed
+      window.location.href = '/login'
+    }
+  }
+
+  // Check auth when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      checkAuth()
+    }
+  }, [isOpen])
 
   const acceptedFormats = [
     { type: "CSV", description: "Structured data tables" },
@@ -137,7 +160,7 @@ export function ContributeDataModal({ isOpen, onClose, model }: ContributeDataMo
         formData.append('file', file)
       })
 
-      const response = await fetch('http://localhost:4000/api/contribute', {
+      const response = await fetch(`http://localhost:4000/api/contribute/${campaignId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

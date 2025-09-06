@@ -40,7 +40,7 @@ export default function ModelDetailPage({ params }: { params: { id: string } }) 
       <main className="pt-16">
         <ModelDetailHeader model={detailModel} />
         <ModelMetrics model={detailModel} />
-        <ModelActions model={detailModel} />
+        <ModelActions model={detailModel} campaignId={params.id} />
         <ModelTabs model={detailModel} />
       </main>
     </div>
