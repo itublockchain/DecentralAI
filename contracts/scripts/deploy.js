@@ -1,9 +1,10 @@
 const { ethers, artifacts } = require ("hardhat");
 const fs = require("fs");
+require('dotenv').config();
 
 (async function () {
 
-    const contract = await ethers.getContractFactory("main").then((contract) => contract.deploy());
+    const contract = await ethers.getContractFactory("main").then((contract) => contract.deploy(process.env.ROFL_PUBLIC_KEY));
     const contractsDir = __dirname + "/../data";
     if (!fs.existsSync(contractsDir)) {fs.mkdirSync(contractsDir);} else {
 
