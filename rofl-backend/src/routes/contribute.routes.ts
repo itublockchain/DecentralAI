@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { contribute } from '../controllers/contributeController';
-import { dynamicWalletAuth } from '../middlewares/dynamicAuth';
+import { contribute } from '../controllers/contribute.controller';
+import { dynamicWalletAuth } from '../middlewares/dynamic-auth.middleware';
 
 const router = Router();
 

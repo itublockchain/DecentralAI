@@ -3,8 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
 import { logger } from './config/logger';
-import { contributeRoutes } from './routes/contributeRoutes';
-import { errorHandler } from './middlewares/errorHandler';
+import { contributeRoutes } from './routes/contribute.routes';
+import { errorHandler } from './middlewares/error-handler.middleware';
 
 const app = express();
 
