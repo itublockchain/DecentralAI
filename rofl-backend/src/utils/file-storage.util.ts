@@ -25,18 +25,18 @@ export class FileStorageUtil {
     }
 
     /**
-     * Save campaign vectors to file
+     * Save vectors to file with UUID-based naming
      */
-    static async saveCampaignVectors(campaignId: number, vectors: VectorEmbedding[]): Promise<void> {
+    static async saveVectorsByUUID(uuid: string, vectors: VectorEmbedding[]): Promise<void> {
         try {
             this.ensureStorageDir();
             
-            const filename = `campaign_${campaignId}_vectors.json`;
+            const filename = `${uuid}.json`;
             const filepath = path.join(this.STORAGE_DIR, filename);
             
             // Serialize vectors to JSON with metadata
             const data = {
-                campaignId,
+                uuid,
                 vectorCount: vectors.length,
                 lastUpdated: new Date().toISOString(),
                 vectors: vectors.map(v => ({
@@ -56,19 +56,84 @@ export class FileStorageUtil {
             const jsonData = JSON.stringify(data, null, 2);
             await fs.promises.writeFile(filepath, jsonData, 'utf8');
 
-            LoggerUtil.logServiceOperation('FileStorageUtil', 'saveCampaignVectors', {
-                campaignId,
+            LoggerUtil.logServiceOperation('FileStorageUtil', 'saveVectorsByUUID', {
+                uuid,
                 vectorCount: vectors.length,
                 filepath,
                 fileSizeKB: Math.round(jsonData.length / 1024)
             });
 
         } catch (error) {
-            LoggerUtil.logServiceError('FileStorageUtil', 'saveCampaignVectors', error, {
-                campaignId,
+            LoggerUtil.logServiceError('FileStorageUtil', 'saveVectorsByUUID', error, {
+                uuid,
                 vectorCount: vectors?.length
             });
-            throw new Error(`Failed to save vectors for campaign ${campaignId}`);
+            throw new Error(`Failed to save vectors for UUID ${uuid}`);
+        }
+    }
+
+    /**
+     * Load vectors by UUID
+     */
+    static async loadVectorsByUUID(uuid: string): Promise<VectorEmbedding[]> {
+        try {
+            const filename = `${uuid}.json`;
+            const filepath = path.join(this.STORAGE_DIR, filename);
+
+            // Check if file exists
+            if (!fs.existsSync(filepath)) {
+                LoggerUtil.logServiceOperation('FileStorageUtil', 'loadVectorsByUUID - file not found', {
+                    uuid,
+                    filepath
+                });
+                return [];
+            }
+
+            const jsonData = await fs.promises.readFile(filepath, 'utf8');
+            const data = JSON.parse(jsonData);
+
+            // Validate data structure
+            if (!data.vectors || !Array.isArray(data.vectors)) {
+                throw new Error('Invalid vector data structure');
+            }
+
+            // Reconstruct VectorEmbedding objects
+            const vectors: VectorEmbedding[] = data.vectors.map((v: any) => ({
+                id: v.id,
+                vector: v.vector,
+                chunk: {
+                    id: v.chunk.id,
+                    content: v.chunk.content,
+                    startIndex: v.chunk.startIndex,
+                    endIndex: v.chunk.endIndex,
+                    metadata: v.chunk.metadata
+                },
+                timestamp: new Date(v.timestamp)
+            }));
+
+            LoggerUtil.logServiceOperation('FileStorageUtil', 'loadVectorsByUUID', {
+                uuid,
+                vectorCount: vectors.length,
+                filepath,
+                lastUpdated: data.lastUpdated
+            });
+
+            return vectors;
+
+        } catch (error) {
+            LoggerUtil.logServiceError('FileStorageUtil', 'loadVectorsByUUID', error, {
+                uuid
+            });
+            
+            // If file is corrupted, log warning and return empty array
+            if (error instanceof SyntaxError) {
+                LoggerUtil.logServiceError('FileStorageUtil', 'loadVectorsByUUID - corrupted file', error, {
+                    uuid
+                });
+                return [];
+            }
+            
+            throw new Error(`Failed to load vectors for UUID ${uuid}`);
         }
     }
 

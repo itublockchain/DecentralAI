@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/Users/extypen/DecentralAI/contracts/src/main.sol": {
-      "lastModificationDate": 1757199979296,
-      "contentHash": "5bd12bb22e1c7c58c47f10f3844b3768",
+      "lastModificationDate": 1757203618789,
+      "contentHash": "aa74ce694d0fb85a1207342dc421d1fb",
       "sourceName": "src/main.sol",
       "solcConfig": {
         "version": "0.8.28",

@@ -10,25 +10,19 @@ interface ModelCardProps {
   model: {
     id: string
     name: string
-    domain: string
+    category: string
     avatar: string
-    accuracy: number
-    apiCalls: string
-    dataSources: number
-    price: number
     description: string
     status: "active" | "funding" | "inactive"
-    requiredDatasets?: number
-    currentDatasets?: number
-    inputTokenPrice?: number
-    outputTokenPrice?: number
-    nftHolders?: number
-    monthlyRevenue?: number
+    inputTokenPrice: number
+    outputTokenPrice: number
+    totalDataToken: number
+    totalRevenue: number
   }
 }
 
 export function ModelCard({ model }: ModelCardProps) {
-  const getDomainColor = (domain: string) => {
+  const getCategoryColor = (category: string) => {
     const colors = {
       Medical: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
       Legal: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
@@ -36,7 +30,7 @@ export function ModelCard({ model }: ModelCardProps) {
       Research: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
       General: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
     }
-    return colors[domain as keyof typeof colors] || colors.General
+    return colors[category as keyof typeof colors] || colors.General
   }
 
   const getStatusBadge = () => {
@@ -65,7 +59,6 @@ export function ModelCard({ model }: ModelCardProps) {
     }
   }
 
-  const fundingProgress = model.requiredDatasets ? ((model.currentDatasets || 0) / model.requiredDatasets) * 100 : 0
 
   return (
     <Card className="border-border bg-card hover:bg-muted/30 transition-all duration-300 hover:shadow-lg group flex flex-col h-full">
@@ -79,7 +72,7 @@ export function ModelCard({ model }: ModelCardProps) {
             <div>
               <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{model.name}</h3>
               <div className="flex items-center gap-2 mt-1">
-                <Badge className={`text-xs ${getDomainColor(model.domain)}`}>{model.domain} AI</Badge>
+                <Badge className={`text-xs ${getCategoryColor(model.category)}`}>{model.category} AI</Badge>
                 {getStatusBadge()}
               </div>
             </div>
@@ -87,85 +80,36 @@ export function ModelCard({ model }: ModelCardProps) {
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4 flex-1 flex flex-col">
+      <CardContent className="space-y-6 flex-1 flex flex-col">
         {/* Description */}
         <p className="text-sm text-muted-foreground line-clamp-2">{model.description}</p>
 
-        <div className="flex-1">
-          {model.status === "funding" && model.requiredDatasets ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Funding Progress</span>
-                <span className="font-medium">
-                  {model.currentDatasets || 0}/{model.requiredDatasets} datasets
-                </span>
-              </div>
-              <Progress value={fundingProgress} className="h-2" />
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-muted/50 rounded-lg p-3 text-center">
-                  <div className="text-lg font-semibold text-foreground">${model.inputTokenPrice}</div>
-                  <div className="text-xs text-muted-foreground">Input/1M tokens</div>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-3 text-center">
-                  <div className="text-lg font-semibold text-foreground">${model.outputTokenPrice}</div>
-                  <div className="text-xs text-muted-foreground">Output/1M tokens</div>
-                </div>
-              </div>
+        {/* Campaign Metrics - Clean List Layout */}
+        <div className="flex-1 space-y-4">
+          <div className="space-y-3">
+            {/* Token Pricing */}
+            <div className="flex items-center justify-between py-2 border-b border-border/30">
+              <span className="text-sm text-muted-foreground">Input Token Price</span>
+              <span className="text-base font-semibold text-foreground">${model.inputTokenPrice}</span>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {model.status === "active" ? (
-                <>
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <div className="text-lg font-semibold text-foreground">{model.accuracy}%</div>
-                    <div className="text-xs text-muted-foreground">Accuracy</div>
-                  </div>
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <div className="text-lg font-semibold text-foreground">{model.apiCalls}</div>
-                    <div className="text-xs text-muted-foreground">API Calls</div>
-                  </div>
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Users className="h-3 w-3" />
-                      <span className="text-lg font-semibold text-foreground">{model.nftHolders || 0}</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">NFT Holders</div>
-                  </div>
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Coins className="h-3 w-3" />
-                      <span className="text-lg font-semibold text-foreground">${model.monthlyRevenue || 0}</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">Monthly Revenue</div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <div className="text-lg font-semibold text-foreground">{model.accuracy}%</div>
-                    <div className="text-xs text-muted-foreground">Expected Accuracy</div>
-                  </div>
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <div className="text-lg font-semibold text-foreground">{model.dataSources}</div>
-                    <div className="text-xs text-muted-foreground">Data Sources</div>
-                  </div>
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <div className="text-lg font-semibold text-foreground">${model.inputTokenPrice}</div>
-                    <div className="text-xs text-muted-foreground">Input/1M tokens</div>
-                  </div>
-                  <div className="bg-muted/50 rounded-lg p-3 text-center">
-                    <div className="text-lg font-semibold text-foreground">${model.outputTokenPrice}</div>
-                    <div className="text-xs text-muted-foreground">Output/1M tokens</div>
-                  </div>
-                </>
-              )}
+            <div className="flex items-center justify-between py-2 border-b border-border/30">
+              <span className="text-sm text-muted-foreground">Output Token Price</span>
+              <span className="text-base font-semibold text-foreground">${model.outputTokenPrice}</span>
             </div>
-          )}
+            <div className="flex items-center justify-between py-2 border-b border-border/30">
+              <span className="text-sm text-muted-foreground">Total Data Tokens</span>
+              <span className="text-base font-semibold text-foreground">{model.totalDataToken.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm text-muted-foreground">Total Revenue</span>
+              <span className="text-base font-semibold text-green-600">${model.totalRevenue.toLocaleString()}</span>
+            </div>
+          </div>
         </div>
 
         <Link href={`/model/${model.id}`}>
-          <Button className="w-full bg-transparent" variant="outline">
-            {model.status === "funding" ? "View Campaign" : "View Details"}
+          <Button className="w-full" variant="outline">
+            View Details
           </Button>
         </Link>
       </CardContent>

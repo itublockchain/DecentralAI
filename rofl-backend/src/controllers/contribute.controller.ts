@@ -36,7 +36,7 @@ export const contribute = async (req: Request, res: Response, next: NextFunction
         }
 
         // Add job to queue for async processing
-        const jobId = await queueService.addJob({
+        const jobId = await queueService.addContributionJob({
             walletAddress: user.walletAddress,
             email: user.email,
             name: user.name,

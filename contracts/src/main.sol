@@ -63,7 +63,8 @@ contract main is ReentrancyGuard {
     }
 
     function createCampaign (string memory name, string memory description, string memory vector_db_cid, address owner, Category category, uint in_token_price, uint out_token_price, uint initial_data_token) public {
-        Campaign storage c = campaigns[idCounter];
+        campaigns.push();
+        Campaign storage c = campaigns[campaigns.length - 1];
         c.name = name;
         c.description = description;
         c.owner = owner;

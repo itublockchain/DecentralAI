@@ -1,5 +1,6 @@
-import { Job, JobStatus, ContributionJobData, JobSummary, QueueStats } from '../types/job.types';
+import { Job, JobStatus, ContributionJobData, ModelCampaignJobData, JobSummary, QueueStats } from '../types/job.types';
 import { ContributeService } from './contribute.service';
+import { ModelCampaignService } from './model-campaign.service';
 import { LoggerUtil } from '../utils';
 
 export class ContributionQueueService {
@@ -9,6 +10,7 @@ export class ContributionQueueService {
     private isProcessing: boolean = false;
     private workerInterval?: NodeJS.Timeout;
     private contributeService: ContributeService;
+    private modelCampaignService: ModelCampaignService;
 
     // Cleanup old jobs after 24 hours
     private readonly JOB_CLEANUP_HOURS = 24;
@@ -16,6 +18,7 @@ export class ContributionQueueService {
 
     private constructor() {
         this.contributeService = new ContributeService();
+        this.modelCampaignService = new ModelCampaignService();
         this.startWorker();
         this.startCleanupTimer();
     }
@@ -30,7 +33,7 @@ export class ContributionQueueService {
     /**
      * Add a new contribution job to the queue
      */
-    async addJob(data: ContributionJobData): Promise<string> {
+    async addContributionJob(data: ContributionJobData): Promise<string> {
         const jobId = this.generateJobId(data.campaignId);
         
         const job: Job = {
@@ -45,9 +48,41 @@ export class ContributionQueueService {
         this.jobs.set(jobId, job);
         this.queue.push(jobId);
 
-        LoggerUtil.logServiceOperation('ContributionQueueService', 'addJob', {
+        LoggerUtil.logServiceOperation('ContributionQueueService', 'addContributionJob', {
             jobId,
             campaignId: data.campaignId,
+            fileName: data.file.originalname,
+            queueLength: this.queue.length
+        });
+
+        // Start processing if not already running
+        this.processNext();
+
+        return jobId;
+    }
+
+    /**
+     * Add a new model campaign job to the queue
+     */
+    async addModelCampaignJob(data: ModelCampaignJobData): Promise<string> {
+        const jobId = this.generateJobId();
+        
+        const job: Job = {
+            id: jobId,
+            type: 'model-campaign',
+            data,
+            status: 'queued',
+            createdAt: new Date(),
+            progress: 0
+        };
+
+        this.jobs.set(jobId, job);
+        this.queue.push(jobId);
+
+        LoggerUtil.logServiceOperation('ContributionQueueService', 'addModelCampaignJob', {
+            jobId,
+            name: data.name,
+            owner: data.owner,
             fileName: data.file.originalname,
             queueLength: this.queue.length
         });
@@ -65,17 +100,24 @@ export class ContributionQueueService {
         const job = this.jobs.get(jobId);
         if (!job) return null;
 
-        return {
+        const summary: JobSummary = {
             id: job.id,
+            type: job.type,
             status: job.status,
             createdAt: job.createdAt,
             startedAt: job.startedAt,
             completedAt: job.completedAt,
             error: job.error,
             progress: job.progress || 0,
-            campaignId: job.data.campaignId,
             fileName: job.data.file.originalname
         };
+
+        // Add campaignId only for contribution jobs
+        if (job.type === 'contribution') {
+            summary.campaignId = (job.data as ContributionJobData).campaignId;
+        }
+
+        return summary;
     }
 
     /**
@@ -85,16 +127,17 @@ export class ContributionQueueService {
         const campaignJobs: JobSummary[] = [];
         
         for (const job of this.jobs.values()) {
-            if (job.data.campaignId === campaignId) {
+            if (job.type === 'contribution' && (job.data as ContributionJobData).campaignId === campaignId) {
                 campaignJobs.push({
                     id: job.id,
+                    type: job.type,
                     status: job.status,
                     createdAt: job.createdAt,
                     startedAt: job.startedAt,
                     completedAt: job.completedAt,
                     error: job.error,
                     progress: job.progress || 0,
-                    campaignId: job.data.campaignId,
+                    campaignId: (job.data as ContributionJobData).campaignId,
                     fileName: job.data.file.originalname
                 });
             }
@@ -153,22 +196,37 @@ export class ContributionQueueService {
 
             LoggerUtil.logServiceOperation('ContributionQueueService', 'processNext - started', {
                 jobId,
-                campaignId: job.data.campaignId,
+                jobType: job.type,
+                campaignId: job.type === 'contribution' ? (job.data as ContributionJobData).campaignId : undefined,
                 fileName: job.data.file.originalname
             });
 
             // Update progress during processing
             job.progress = 30;
 
-            // Process the contribution
-            const result = await this.contributeService.processContribution({
-                walletAddress: job.data.walletAddress,
-                email: job.data.email,
-                name: job.data.name,
-                sub: job.data.sub,
-                campaignId: job.data.campaignId,
-                file: job.data.file
-            });
+            let result;
+            if (job.type === 'contribution') {
+                const contributionData = job.data as ContributionJobData;
+                result = await this.contributeService.processContribution({
+                    walletAddress: contributionData.walletAddress,
+                    email: contributionData.email,
+                    name: contributionData.name,
+                    sub: contributionData.sub,
+                    campaignId: contributionData.campaignId,
+                    file: contributionData.file
+                });
+            } else if (job.type === 'model-campaign') {
+                const modelCampaignData = job.data as ModelCampaignJobData;
+                result = await this.modelCampaignService.createModelCampaign({
+                    name: modelCampaignData.name,
+                    description: modelCampaignData.description,
+                    owner: modelCampaignData.owner,
+                    category: modelCampaignData.category,
+                    in_token_price: modelCampaignData.in_token_price,
+                    out_token_price: modelCampaignData.out_token_price,
+                    file: modelCampaignData.file
+                });
+            }
 
             // Job completed successfully
             job.status = 'completed';
@@ -178,7 +236,8 @@ export class ContributionQueueService {
 
             LoggerUtil.logServiceOperation('ContributionQueueService', 'processNext - completed', {
                 jobId,
-                campaignId: job.data.campaignId,
+                jobType: job.type,
+                campaignId: job.type === 'contribution' ? (job.data as ContributionJobData).campaignId : undefined,
                 fileName: job.data.file.originalname,
                 processingTimeMs: job.completedAt.getTime() - job.startedAt!.getTime()
             });
@@ -192,7 +251,8 @@ export class ContributionQueueService {
 
             LoggerUtil.logServiceError('ContributionQueueService', 'processNext - failed', error, {
                 jobId,
-                campaignId: job.data.campaignId,
+                jobType: job.type,
+                campaignId: job.type === 'contribution' ? (job.data as ContributionJobData).campaignId : undefined,
                 fileName: job.data.file.originalname
             });
         } finally {
@@ -260,8 +320,9 @@ export class ContributionQueueService {
     /**
      * Generate unique job ID
      */
-    private generateJobId(campaignId: number): string {
-        return `job_${campaignId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    private generateJobId(campaignId?: number): string {
+        const prefix = campaignId ? `job_${campaignId}` : 'job_model';
+        return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
     /**

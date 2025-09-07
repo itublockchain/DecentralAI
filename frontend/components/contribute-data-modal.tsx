@@ -260,7 +260,7 @@ export function ContributeDataModal({ isOpen, onClose, model, campaignId }: Cont
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-green-600" />
-                    Data must be relevant to {model.domain.toLowerCase()} domain
+                    Data must be relevant to {model.category.toLowerCase()} domain
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-green-600" />

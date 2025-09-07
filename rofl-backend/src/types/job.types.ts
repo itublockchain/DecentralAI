@@ -9,10 +9,20 @@ export interface ContributionJobData {
     file: Express.Multer.File;
 }
 
+export interface ModelCampaignJobData {
+    name: string;
+    description: string;
+    owner: string;
+    category: number;
+    in_token_price: string;
+    out_token_price: string;
+    file: Express.Multer.File;
+}
+
 export interface Job {
     id: string;
-    type: 'contribution';
-    data: ContributionJobData;
+    type: 'contribution' | 'model-campaign';
+    data: ContributionJobData | ModelCampaignJobData;
     status: JobStatus;
     createdAt: Date;
     startedAt?: Date;
@@ -24,13 +34,14 @@ export interface Job {
 
 export interface JobSummary {
     id: string;
+    type: 'contribution' | 'model-campaign';
     status: JobStatus;
     createdAt: Date;
     startedAt?: Date;
     completedAt?: Date;
     error?: string;
     progress?: number;
-    campaignId: number;
+    campaignId?: number; // Optional for model-campaign jobs
     fileName: string;
 }
 

@@ -6,6 +6,7 @@ import { logger } from './config/logger';
 import { contributeRoutes } from './routes/contribute.routes';
 import { campaignQueryRoutes } from './routes/campaign-query.routes';
 import { jobRoutes } from './routes/job.routes';
+import { modelCampaignRoutes } from './routes/model-campaign.routes';
 import { errorHandler } from './middlewares/error-handler.middleware';
 
 const app = express();
@@ -25,6 +26,7 @@ app.get('/health', (req, res) => {
 app.use('/api/contribute', contributeRoutes);
 app.use('/api/campaigns', campaignQueryRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/model-campaign', modelCampaignRoutes);
 
 app.use(errorHandler);
 

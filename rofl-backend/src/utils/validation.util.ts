@@ -86,4 +86,13 @@ export class ValidationUtil {
     static isValidMimeType(mimeType: string, allowedTypes: string[]): boolean {
         return allowedTypes.includes(mimeType);
     }
+
+    /**
+     * Validate Ethereum address format
+     */
+    static isValidAddress(address: string): boolean {
+        // Basic Ethereum address validation
+        const addressRegex = /^0x[a-fA-F0-9]{40}$/;
+        return addressRegex.test(address);
+    }
 }

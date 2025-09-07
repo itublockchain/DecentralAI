@@ -6,6 +6,7 @@ export { RAGUtil } from './rag.util';
 export { VectorStore } from './vector-store.util';
 export { OllamaService } from './ollama.util';
 export { FileStorageUtil } from './file-storage.util';
+export { BlockchainUtil } from './blockchain.util';
 
 export type { FileProcessingResult } from './file.util';
 export type { LogContext } from './logger.util';
