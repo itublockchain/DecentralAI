@@ -92,8 +92,8 @@ export class ModelCampaignService {
                 vector_db_cid: vectorStoreId, // Using UUID as CID
                 owner: data.owner,
                 category: data.category,
-                in_token_price: BlockchainUtil.parseWei(data.in_token_price),
-                out_token_price: BlockchainUtil.parseWei(data.out_token_price),
+                in_token_price: BigInt(data.in_token_price),
+                out_token_price: BigInt(data.out_token_price),
                 initial_data_token: BigInt(initialDataTokens)
             };
 

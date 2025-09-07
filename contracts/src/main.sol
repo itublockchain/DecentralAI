@@ -8,7 +8,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract main is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    IERC20 public immutable usdc = IERC20(0x8A93d247134d91e0de6f96547cB0204e5BE8e5D8);
+    IERC20 public immutable usdc = IERC20(0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238);
 
     enum Category { Health, Financial, Education, Technology, Other }
 
@@ -95,6 +95,10 @@ contract main is ReentrancyGuard {
         }
 
         return (balance, contributeAmount, takenShare);
+    }
+
+    function getUserBalance(address user) public view returns (uint) {
+        return virtualBalances[user];
     }
 
     function stake(uint256 amount) external nonReentrant {

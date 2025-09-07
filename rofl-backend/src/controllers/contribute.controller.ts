@@ -28,7 +28,7 @@ export const contribute = async (req: Request, res: Response, next: NextFunction
         const { campaignId } = req.params;
         const parsedCampaignId = parseInt(campaignId || '0');
 
-        if (!campaignId || isNaN(parsedCampaignId) || parsedCampaignId <= 0) {
+        if (!campaignId || isNaN(parsedCampaignId) || parsedCampaignId < 0) {
             return res.status(400).json({
                 error: 'Bad Request',
                 message: 'Valid campaign ID is required'

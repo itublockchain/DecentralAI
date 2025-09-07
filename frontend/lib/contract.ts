@@ -8,7 +8,7 @@ export const publicClient = createPublicClient({
 })
 
 // Contract configuration
-export const CONTRACT_ADDRESS = '0xA170FC226053a347106a017Eba688A6193137cc3'
+export const CONTRACT_ADDRESS = '0x90Cb261abe850f4b0413B8143b66aeC1D97593d8'
 export const CONTRACT_ABI = [
   {
     "inputs": [
@@ -292,6 +292,25 @@ export const CONTRACT_ABI = [
     "name": "withdraw",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      }
+    ],
+    "name": "getUserBalance",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   }
 ] as const

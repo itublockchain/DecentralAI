@@ -118,8 +118,12 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
       apiFormData.append('description', formData.description)
       apiFormData.append('owner', account as string)
       apiFormData.append('category', categoryId.toString())
-      apiFormData.append('in_token_price', formData.inputTokenPrice.toString())
-      apiFormData.append('out_token_price', formData.outputTokenPrice.toString())
+      // Convert prices to USDC format (multiply by 10^6)
+      const inTokenPriceFormatted = Math.round(formData.inputTokenPrice * 1e6)
+      const outTokenPriceFormatted = Math.round(formData.outputTokenPrice * 1e6)
+      
+      apiFormData.append('in_token_price', inTokenPriceFormatted.toString())
+      apiFormData.append('out_token_price', outTokenPriceFormatted.toString())
       apiFormData.append('file', selectedFile)
 
       // Get the JWT token

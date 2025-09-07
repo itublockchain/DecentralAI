@@ -13,6 +13,8 @@ import {
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
 import { useUserWallets } from "@dynamic-labs/sdk-react-core"
 import { useEffect, useState } from "react"
+import { readContract } from 'viem/actions'
+import { publicClient, CONTRACT_ADDRESS, CONTRACT_ABI } from '@/lib/contract'
 
 export function Navigation() {
   const { user, handleLogOut, primaryWallet } = useDynamicContext()
@@ -23,8 +25,14 @@ export function Navigation() {
     const fetchBalance = async () => {
       if (primaryWallet) {
         try {
-          const walletBalance = await primaryWallet.getBalance()
-          setBalance(`$${parseFloat(walletBalance || "0").toFixed(2)}`)
+          const userBalance = await readContract(publicClient, {
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'getUserBalance',
+            args: [primaryWallet.address as `0x${string}`],
+          })
+          const formattedBalance = (Number(userBalance) / 1e6).toFixed(2)
+          setBalance(`$${formattedBalance}`)
         } catch (error) {
           setBalance("$0.00")
         }

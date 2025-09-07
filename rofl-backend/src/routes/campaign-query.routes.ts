@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { CampaignQueryController } from '../controllers/campaign-query.controller';
 import { JobController } from '../controllers/job.controller';
+import { dynamicWalletAuth } from '../middlewares/dynamic-auth.middleware';
 
 const router = Router();
 const campaignQueryController = new CampaignQueryController();
@@ -34,7 +35,7 @@ const jobController = new JobController();
  *   }
  * }
  */
-router.post('/:campaignId/query', async (req, res) => {
+router.post('/:campaignId/query', dynamicWalletAuth, async (req, res) => {
     await campaignQueryController.query(req, res);
 });
 

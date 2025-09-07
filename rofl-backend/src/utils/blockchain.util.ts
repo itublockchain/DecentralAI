@@ -300,7 +300,7 @@ const CONTRACT_ABI = [
 ] as const;
 
 export class BlockchainUtil {
-    private static readonly CONTRACT_ADDRESS = '0xA170FC226053a347106a017Eba688A6193137cc3' as const;
+    private static readonly CONTRACT_ADDRESS = '0x90Cb261abe850f4b0413B8143b66aeC1D97593d8' as const;
     private static walletClient: any;
     private static publicClient: any;
 
@@ -507,6 +507,146 @@ export class BlockchainUtil {
             return formatEther(value);
         } catch (error) {
             throw new Error(`Invalid bigint value: ${value}`);
+        }
+    }
+
+    /**
+     * Record a contribution on the blockchain
+     */
+    static async recordContribution(campaignId: number, contributorAddress: string, dataTokenAmount: number): Promise<string> {
+        try {
+            if (!this.walletClient || !this.publicClient) {
+                this.initialize();
+            }
+
+            LoggerUtil.logServiceOperation('BlockchainUtil', 'recordContribution - start', {
+                campaignId,
+                contributorAddress,
+                dataTokenAmount
+            });
+
+            // Get contract instance
+            const contract = getContract({
+                address: this.CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                client: { public: this.publicClient, wallet: this.walletClient }
+            });
+
+            // Execute contribute transaction
+            const txHash = await contract.write.contribute([
+                BigInt(campaignId),
+                contributorAddress as `0x${string}`,
+                BigInt(dataTokenAmount)
+            ]);
+
+            LoggerUtil.logServiceOperation('BlockchainUtil', 'recordContribution - transaction sent', {
+                transactionHash: txHash,
+                campaignId,
+                contributorAddress,
+                dataTokenAmount
+            });
+
+            // Wait for transaction confirmation
+            const receipt = await this.publicClient.waitForTransactionReceipt({
+                hash: txHash,
+                timeout: 60_000 // 60 seconds
+            });
+
+            LoggerUtil.logServiceOperation('BlockchainUtil', 'recordContribution - confirmed', {
+                transactionHash: txHash,
+                blockNumber: receipt.blockNumber,
+                gasUsed: receipt.gasUsed,
+                status: receipt.status,
+                campaignId,
+                contributorAddress
+            });
+
+            if (receipt.status === 'reverted') {
+                throw new Error('Contribution transaction was reverted');
+            }
+
+            return txHash;
+
+        } catch (error) {
+            LoggerUtil.logServiceError('BlockchainUtil', 'recordContribution', error, {
+                campaignId,
+                contributorAddress,
+                dataTokenAmount
+            });
+
+            throw new Error(`Failed to record contribution on blockchain: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Record chat/query usage on the blockchain
+     */
+    static async recordChatUsage(campaignId: number, userAddress: string, inputTokens: number, outputTokens: number): Promise<string> {
+        try {
+            if (!this.walletClient || !this.publicClient) {
+                this.initialize();
+            }
+
+            LoggerUtil.logServiceOperation('BlockchainUtil', 'recordChatUsage - start', {
+                campaignId,
+                userAddress,
+                inputTokens,
+                outputTokens
+            });
+
+            // Get contract instance
+            const contract = getContract({
+                address: this.CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                client: { public: this.publicClient, wallet: this.walletClient }
+            });
+
+            // Execute chat transaction
+            const txHash = await contract.write.chat([
+                BigInt(inputTokens),
+                BigInt(outputTokens),
+                userAddress as `0x${string}`,
+                BigInt(campaignId)
+            ]);
+
+            LoggerUtil.logServiceOperation('BlockchainUtil', 'recordChatUsage - transaction sent', {
+                transactionHash: txHash,
+                campaignId,
+                userAddress,
+                inputTokens,
+                outputTokens
+            });
+
+            // Wait for transaction confirmation
+            const receipt = await this.publicClient.waitForTransactionReceipt({
+                hash: txHash,
+                timeout: 60_000 // 60 seconds
+            });
+
+            LoggerUtil.logServiceOperation('BlockchainUtil', 'recordChatUsage - confirmed', {
+                transactionHash: txHash,
+                blockNumber: receipt.blockNumber,
+                gasUsed: receipt.gasUsed,
+                status: receipt.status,
+                campaignId,
+                userAddress
+            });
+
+            if (receipt.status === 'reverted') {
+                throw new Error('Chat usage transaction was reverted');
+            }
+
+            return txHash;
+
+        } catch (error) {
+            LoggerUtil.logServiceError('BlockchainUtil', 'recordChatUsage', error, {
+                campaignId,
+                userAddress,
+                inputTokens,
+                outputTokens
+            });
+
+            throw new Error(`Failed to record chat usage on blockchain: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 }

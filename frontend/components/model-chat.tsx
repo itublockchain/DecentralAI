@@ -43,10 +43,25 @@ export function ModelChat({ campaignId, modelName }: ModelChatProps) {
     setIsLoading(true)
 
     try {
+      const rawToken = localStorage.getItem('dynamic_authentication_token')
+      
+      if (!rawToken) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to chat with the model",
+          variant: "destructive"
+        })
+        return
+      }
+
+      // Remove quotes from token if they exist
+      const token = rawToken.replace(/^"(.*)"$/, '$1')
+
       const response = await fetch(`http://localhost:4000/api/campaigns/${campaignId}/query`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           query: input.trim(),

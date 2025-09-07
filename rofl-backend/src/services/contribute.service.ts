@@ -7,6 +7,7 @@ import {
     RAGUtil,
     VectorStore
 } from '../utils';
+import { BlockchainUtil } from '../utils/blockchain.util';
 import type { DocumentChunk, VectorEmbedding } from '../utils';
 
 interface ContributeData {
@@ -105,8 +106,15 @@ export class ContributeService {
                 vectorDimension: embeddings[0]?.vector.length || 0
             });
 
-            // Step 4: Store embeddings in vector store
-            await this.vectorStore.storeEmbeddings(campaignId, embeddings);
+            // Step 4: Get campaign UUID from blockchain and store embeddings in vector store
+            const campaignData = await BlockchainUtil.getCampaign(campaignId);
+            const vectorDbUuid = campaignData.vectorDbCid;
+
+            if (!vectorDbUuid) {
+                throw new Error(`Campaign ${campaignId} has no associated vector database UUID`);
+            }
+
+            await this.vectorStore.storeEmbeddings(vectorDbUuid, embeddings);
 
             LoggerUtil.logServiceOperation('ContributeService', 'processFileForRAG - completed', {
                 fileName: file.originalname,
@@ -145,7 +153,25 @@ export class ContributeService {
      * Gets RAG statistics for a campaign
      */
     async getCampaignRAGStats(campaignId: number) {
-        return await this.vectorStore.getCampaignStats(campaignId);
+        // Get campaign UUID from blockchain
+        const campaignData = await BlockchainUtil.getCampaign(campaignId);
+        const vectorDbUuid = campaignData.vectorDbCid;
+
+        if (!vectorDbUuid) {
+            throw new Error(`Campaign ${campaignId} has no associated vector database UUID`);
+        }
+
+        return await this.vectorStore.getCampaignStats(vectorDbUuid);
+    }
+
+    private calculateDataTokenAmount(chunks: DocumentChunk[], embeddings: VectorEmbedding[]): number {
+        // Calculate token amount based on contribution size
+        // Base amount + bonus for chunk count + bonus for embedding quality
+        const baseAmount = 10;
+        const chunkBonus = chunks.length * 2;
+        const embeddingBonus = embeddings.length * 1;
+        
+        return baseAmount + chunkBonus + embeddingBonus;
     }
 
     async processContribution(contributionData: ContributeData): Promise<ContributeResult> {
@@ -173,9 +199,15 @@ export class ContributeService {
             // Process file through RAG pipeline: chunk -> embed -> store
             const { chunks, embeddings } = await this.processFileForRAG(file, campaignId);
 
+            // Calculate data token amount based on contribution
+            const dataTokenAmount = this.calculateDataTokenAmount(chunks, embeddings);
+
+            // Record contribution on blockchain
+            await BlockchainUtil.recordContribution(campaignId, walletAddress, dataTokenAmount);
+
             const result: ContributeResult = {
                 success: true,
-                message: 'Contribution processed successfully and vectorized for RAG',
+                message: 'Contribution processed successfully, vectorized for RAG, and recorded on blockchain',
                 data: {
                     walletAddress,
                     email,
@@ -200,7 +232,9 @@ export class ContributeService {
                 success: true,
                 chunksCreated: chunks.length,
                 embeddingsGenerated: embeddings.length,
-                vectorizedForRAG: true
+                dataTokenAmount,
+                vectorizedForRAG: true,
+                recordedOnBlockchain: true
             });
 
             return result;

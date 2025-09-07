@@ -15,7 +15,7 @@ export class ValidationUtil {
     }
 
     static isValidCampaignId(campaignId: any): boolean {
-        return Number.isInteger(campaignId) && campaignId > 0;
+        return Number.isInteger(campaignId) && campaignId >= 0;
     }
 
     static isValidString(value: any, minLength: number = 1): boolean {

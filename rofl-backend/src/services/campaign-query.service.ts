@@ -5,6 +5,7 @@ import {
     SearchResult, 
     ResponseUtil 
 } from '../utils';
+import { BlockchainUtil } from '../utils/blockchain.util';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export interface QueryRequest {
@@ -29,6 +30,11 @@ export interface QueryResponse {
         totalSourcesFound: number;
         processingTimeMs: number;
         modelUsed: string;
+        tokenUsage: {
+            inputTokens: number;
+            outputTokens: number;
+        };
+        transactionHash?: string;
     };
 }
 
@@ -61,9 +67,18 @@ export class CampaignQueryService {
     }
 
     /**
+     * Estimate token count for text (approximate)
+     */
+    private estimateTokenCount(text: string): number {
+        // Rough estimation: ~1 token per 4 characters for English text
+        // This is an approximation and may vary by model
+        return Math.ceil(text.length / 4);
+    }
+
+    /**
      * Process a query against a specific campaign's knowledge base
      */
-    async queryWithRAG(queryData: QueryRequest): Promise<QueryResponse> {
+    async queryWithRAG(queryData: QueryRequest, userAddress: string): Promise<QueryResponse> {
         const startTime = Date.now();
         
         try {
@@ -80,6 +95,10 @@ export class CampaignQueryService {
 
             if (!vectorDbUuid || vectorDbUuid.trim().length === 0) {
                 throw new Error('Vector DB UUID is required');
+            }
+
+            if (!userAddress || userAddress.trim().length === 0) {
+                throw new Error('User address is required');
             }
 
             LoggerUtil.logServiceOperation('CampaignQueryService', 'queryWithRAG - started', {
@@ -108,19 +127,49 @@ export class CampaignQueryService {
             );
 
             if (searchResults.length === 0) {
+                const noResultsResponse = "I don't have enough relevant information in the knowledge base to answer your question. Please try rephrasing your question or ensure that relevant documents have been uploaded to this campaign.";
+                
+                // Calculate tokens for no results case
+                const inputTokens = this.estimateTokenCount(query);
+                const outputTokens = this.estimateTokenCount(noResultsResponse);
+
+                // Record usage on blockchain
+                let transactionHash: string | undefined;
+                try {
+                    transactionHash = await BlockchainUtil.recordChatUsage(
+                        campaignId, 
+                        userAddress, 
+                        inputTokens, 
+                        outputTokens
+                    );
+                } catch (blockchainError) {
+                    LoggerUtil.logServiceError('CampaignQueryService', 'queryWithRAG - blockchain recording failed', blockchainError, {
+                        campaignId,
+                        userAddress
+                    });
+                }
+
                 LoggerUtil.logServiceOperation('CampaignQueryService', 'queryWithRAG - no relevant sources', {
                     campaignId,
-                    queryLength: query.length
+                    queryLength: query.length,
+                    inputTokens,
+                    outputTokens,
+                    transactionHash
                 });
 
                 return {
-                    answer: "I don't have enough relevant information in the knowledge base to answer your question. Please try rephrasing your question or ensure that relevant documents have been uploaded to this campaign.",
+                    answer: noResultsResponse,
                     sources: [],
                     metadata: {
                         campaignId,
                         totalSourcesFound: 0,
                         processingTimeMs: Date.now() - startTime,
-                        modelUsed: this.useLocalModel ? 'ollama-local' : 'gemini-api'
+                        modelUsed: this.useLocalModel ? 'ollama-local' : 'gemini-api',
+                        tokenUsage: {
+                            inputTokens,
+                            outputTokens
+                        },
+                        transactionHash
                     }
                 };
             }
@@ -132,7 +181,25 @@ export class CampaignQueryService {
             });
 
             // Step 3: Generate answer using the relevant context
-            const answer = await this.generateAnswer(query, searchResults);
+            const { answer, inputTokens, outputTokens } = await this.generateAnswerWithTokenCounting(query, searchResults);
+
+            // Step 4: Record usage on blockchain
+            let transactionHash: string | undefined;
+            try {
+                transactionHash = await BlockchainUtil.recordChatUsage(
+                    campaignId, 
+                    userAddress, 
+                    inputTokens, 
+                    outputTokens
+                );
+            } catch (blockchainError) {
+                LoggerUtil.logServiceError('CampaignQueryService', 'queryWithRAG - blockchain recording failed', blockchainError, {
+                    campaignId,
+                    userAddress,
+                    inputTokens,
+                    outputTokens
+                });
+            }
 
             const response: QueryResponse = {
                 answer,
@@ -141,7 +208,12 @@ export class CampaignQueryService {
                     campaignId,
                     totalSourcesFound: searchResults.length,
                     processingTimeMs: Date.now() - startTime,
-                    modelUsed: this.useLocalModel ? 'ollama-local' : 'gemini-api'
+                    modelUsed: this.useLocalModel ? 'ollama-local' : 'gemini-api',
+                    tokenUsage: {
+                        inputTokens,
+                        outputTokens
+                    },
+                    transactionHash
                 }
             };
 
@@ -150,6 +222,9 @@ export class CampaignQueryService {
                 answerLength: answer.length,
                 sourcesFound: searchResults.length,
                 processingTimeMs: response.metadata.processingTimeMs,
+                inputTokens,
+                outputTokens,
+                transactionHash,
                 success: true
             });
 
@@ -189,9 +264,13 @@ export class CampaignQueryService {
     }
 
     /**
-     * Generate answer using RAG context
+     * Generate answer using RAG context with token counting
      */
-    private async generateAnswer(query: string, searchResults: SearchResult[]): Promise<string> {
+    private async generateAnswerWithTokenCounting(query: string, searchResults: SearchResult[]): Promise<{
+        answer: string;
+        inputTokens: number;
+        outputTokens: number;
+    }> {
         try {
             // Build context from search results
             const context = searchResults
@@ -217,6 +296,9 @@ ${context}`;
 
 Please answer based on the context provided above.`;
 
+            // Calculate input tokens (only user's actual query)
+            const inputTokens = this.estimateTokenCount(query);
+
             let answer: string;
 
             if (this.useLocalModel && this.ollamaService) {
@@ -232,16 +314,31 @@ Please answer based on the context provided above.`;
                 throw new Error('No generation service available');
             }
 
-            return answer.trim();
+            answer = answer.trim();
+            const outputTokens = this.estimateTokenCount(answer);
+
+            return {
+                answer,
+                inputTokens,
+                outputTokens
+            };
 
         } catch (error) {
-            LoggerUtil.logServiceError('CampaignQueryService', 'generateAnswer', error, {
+            LoggerUtil.logServiceError('CampaignQueryService', 'generateAnswerWithTokenCounting', error, {
                 queryLength: query.length,
                 contextSources: searchResults.length,
                 modelType: this.useLocalModel ? 'local' : 'remote'
             });
             throw error;
         }
+    }
+
+    /**
+     * Generate answer using RAG context
+     */
+    private async generateAnswer(query: string, searchResults: SearchResult[]): Promise<string> {
+        const result = await this.generateAnswerWithTokenCounting(query, searchResults);
+        return result.answer;
     }
 
     /**

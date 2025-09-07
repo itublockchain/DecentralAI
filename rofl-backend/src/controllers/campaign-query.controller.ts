@@ -38,6 +38,11 @@ export class CampaignQueryController {
                 return ResponseUtil.badRequest(res, 'Query is too long (maximum 5000 characters)');
             }
 
+            // Validate user authentication
+            if (!req.user || !req.user.walletAddress) {
+                return ResponseUtil.badRequest(res, 'User authentication required');
+            }
+
             // Validate optional parameters
             const validatedTopK = topK ? parseInt(topK, 10) : undefined;
             if (validatedTopK && (!Number.isInteger(validatedTopK) || validatedTopK < 1 || validatedTopK > 20)) {
@@ -81,7 +86,7 @@ export class CampaignQueryController {
                 vectorDbUuid: vectorDbUuid,
                 topK: validatedTopK,
                 minSimilarity: validatedMinSimilarity
-            });
+            }, req.user.walletAddress);
 
             LoggerUtil.logControllerOperation('CampaignQueryController', 'query - completed', {
                 campaignId: parsedCampaignId,

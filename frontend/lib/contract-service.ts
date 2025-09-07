@@ -53,6 +53,18 @@ export class ContractService {
         totalRevenue
       ] = result
 
+      console.log('Raw contract data for campaign', campaignId, ':', {
+        name,
+        description,
+        owner,
+        categoryId: Number(categoryId),
+        vectorDbCid,
+        inTokenPrice: inTokenPrice.toString(),
+        outTokenPrice: outTokenPrice.toString(),
+        totalDataToken: totalDataToken.toString(),
+        totalRevenue: totalRevenue.toString()
+      })
+
       const categoryName = getCategoryName(Number(categoryId))
 
       return {
@@ -62,11 +74,11 @@ export class ContractService {
         owner: owner as string,
         category: categoryName,
         vectorDbCid: vectorDbCid as string,
-        // Convert from wei to readable format (assuming 18 decimals for token prices)
-        inputTokenPrice: Number(formatUnits(inTokenPrice as bigint, 18)),
-        outputTokenPrice: Number(formatUnits(outTokenPrice as bigint, 18)),
+        // Convert from wei to readable format (token prices are in USDC with 6 decimals)
+        inputTokenPrice: Number(formatUnits(inTokenPrice as bigint, 6)),
+        outputTokenPrice: Number(formatUnits(outTokenPrice as bigint, 6)),
         totalDataToken: Number(totalDataToken as bigint),
-        totalRevenue: Number(formatUnits(totalRevenue as bigint, 18)), // Assuming revenue is in wei
+        totalRevenue: Number(formatUnits(totalRevenue as bigint, 6)), // Revenue is also in USDC
         status: this.determineStatus(totalDataToken as bigint, totalRevenue as bigint),
         avatar: categoryAvatars[categoryName] || categoryAvatars.General,
       }

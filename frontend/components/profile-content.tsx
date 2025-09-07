@@ -5,14 +5,246 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ArrowUpRight, ArrowDownLeft, Coins, Activity, DollarSign, Zap, Calendar, TrendingUp } from "lucide-react"
+import { ArrowUpRight, ArrowDownLeft, Coins, Activity, DollarSign, Zap, Calendar, TrendingUp, Copy } from "lucide-react"
+import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
+import { isEthereumWallet } from "@dynamic-labs/ethereum"
+import { useState, useEffect } from "react"
+import { readContract, writeContract } from 'viem/actions'
+import { encodeFunctionData } from 'viem'
+import { publicClient, CONTRACT_ADDRESS, CONTRACT_ABI } from '@/lib/contract'
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 export function ProfileContent() {
+  const { primaryWallet } = useDynamicContext()
+  const [balance, setBalance] = useState<string>("0")
+  const [usdcBalance, setUsdcBalance] = useState<string>("0")
+  const [ethBalance, setEthBalance] = useState<string>("0")
+  const [stakeAmount, setStakeAmount] = useState<string>("")
+  const [isStaking, setIsStaking] = useState(false)
+  const [txnHash, setTxnHash] = useState("")
+  const [copied, setCopied] = useState(false)
+
+  const USDC_ADDRESS = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
+
+  if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-foreground mb-2">Profile</h1>
+          <p className="text-muted-foreground">Please connect your Ethereum wallet to access your profile</p>
+        </div>
+      </div>
+    )
+  }
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (primaryWallet) {
+        try {
+          // Get contract balance
+          const userBalance = await readContract(publicClient, {
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'getUserBalance',
+            args: [primaryWallet.address as `0x${string}`],
+          })
+          const formattedBalance = (Number(userBalance) / 1e6).toFixed(2)
+          setBalance(formattedBalance)
+
+          // Get USDC balance
+          const usdcBalanceResult = await readContract(publicClient, {
+            address: USDC_ADDRESS,
+            abi: [
+              {
+                "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+              }
+            ],
+            functionName: 'balanceOf',
+            args: [primaryWallet.address as `0x${string}`],
+          })
+          const formattedUsdcBalance = (Number(usdcBalanceResult) / 1e6).toFixed(2)
+          setUsdcBalance(formattedUsdcBalance)
+
+          // Get ETH balance
+          const ethBalanceResult = await publicClient.getBalance({
+            address: primaryWallet.address as `0x${string}`
+          })
+          const formattedEthBalance = Number(ethBalanceResult) / 1e18
+          setEthBalance(formattedEthBalance.toFixed(4))
+
+          // Get user data from contract
+          const userData = await readContract(publicClient, {
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'getUser',
+            args: [primaryWallet.address as `0x${string}`],
+          })
+          console.log('User data from contract:', userData)
+        } catch (error) {
+          setBalance("0.00")
+          setUsdcBalance("0.00")
+        }
+      }
+    }
+
+    fetchBalance()
+  }, [primaryWallet])
+
+  const handleStake = async () => {
+    if (!primaryWallet || !stakeAmount || parseFloat(stakeAmount) <= 0) return
+
+    // Check if user has enough USDC
+    if (parseFloat(usdcBalance) < parseFloat(stakeAmount)) {
+      alert(`Insufficient USDC balance. You have $${usdcBalance} but trying to stake $${stakeAmount}`)
+      return
+    }
+
+    setIsStaking(true)
+    try {
+      const amountInWei = (parseFloat(stakeAmount) * 1e6).toString()
+      
+      const publicClient = await primaryWallet.getPublicClient()
+      const walletClient = await primaryWallet.getWalletClient()
+
+
+      // First approve USDC spending using writeContract
+      const approveHash = await writeContract(walletClient, {
+        address: USDC_ADDRESS,
+        abi: [
+          {
+            "inputs": [
+              {"internalType": "address", "name": "spender", "type": "address"},
+              {"internalType": "uint256", "name": "amount", "type": "uint256"}
+            ],
+            "name": "approve",
+            "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+            "stateMutability": "nonpayable",
+            "type": "function"
+          }
+        ],
+        functionName: 'approve',
+        args: [CONTRACT_ADDRESS, BigInt(amountInWei)],
+      })
+      console.log('Approval transaction sent:', approveHash)
+      
+      // Wait for approval with retry logic
+      let approvalReceipt = null
+      let retries = 0
+      const maxRetries = 30 // 30 attempts = ~60 seconds
+      
+      while (!approvalReceipt && retries < maxRetries) {
+        try {
+          approvalReceipt = await publicClient.getTransactionReceipt({ hash: approveHash })
+          break
+        } catch (error) {
+          retries++
+          console.log(`Waiting for approval confirmation... (${retries}/${maxRetries})`)
+          await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds
+        }
+      }
+      
+      if (!approvalReceipt) {
+        console.log('Approval transaction sent but taking longer than expected. Continuing with stake...')
+        // Continue anyway after reasonable wait
+      } else {
+        console.log('Approval confirmed, now staking...')
+      }
+
+      // Then stake using writeContract
+      const hash = await writeContract(walletClient, {
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: 'stake',
+        args: [BigInt(amountInWei)],
+      })
+      setTxnHash(hash)
+      console.log('Stake transaction sent:', hash)
+
+      // Wait for stake transaction with retry logic
+      let stakeReceipt = null
+      let stakeRetries = 0
+      const maxStakeRetries = 30 // 30 attempts = ~60 seconds
+      
+      while (!stakeReceipt && stakeRetries < maxStakeRetries) {
+        try {
+          stakeReceipt = await publicClient.getTransactionReceipt({ hash })
+          break
+        } catch (error) {
+          stakeRetries++
+          console.log(`Waiting for stake confirmation... (${stakeRetries}/${maxStakeRetries})`)
+          await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds
+        }
+      }
+      
+      if (stakeReceipt) {
+        console.log('Stake transaction confirmed:', stakeReceipt)
+      } else {
+        console.log('Stake transaction sent but taking longer than expected to confirm')
+      }
+
+      // Refresh balance after staking
+      const userBalance = await readContract(publicClient, {
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: 'getUserBalance',
+        args: [primaryWallet.address as `0x${string}`],
+      })
+      const formattedBalance = (Number(userBalance) / 1e6).toFixed(2)
+      setBalance(formattedBalance)
+      setStakeAmount("")
+    } catch (error) {
+      console.error('Staking failed:', error)
+      alert(`Staking failed: ${error instanceof Error ? error.message : error}`)
+    } finally {
+      setIsStaking(false)
+    }
+  }
+
+  const copyAddress = async () => {
+    if (primaryWallet?.address) {
+      await navigator.clipboard.writeText(primaryWallet.address)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const formatAddress = (address: string) => {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground mb-2">Profile</h1>
-        <p className="text-muted-foreground">Manage your contributions, API usage, and wallet balance</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Profile</h1>
+            <p className="text-muted-foreground">Manage your contributions, API usage, and wallet balance</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-muted-foreground mb-1">Wallet Address</p>
+            <div className="flex items-center gap-2">
+              <code className="text-sm bg-muted px-2 py-1 rounded">
+                {primaryWallet?.address ? formatAddress(primaryWallet.address) : 'Not connected'}
+              </code>
+              {primaryWallet?.address && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={copyAddress}
+                  className="h-8 px-2"
+                >
+                  <Copy className="h-3 w-3" />
+                  {copied ? 'Copied!' : 'Copy'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="mb-8">
@@ -24,17 +256,46 @@ export function ProfileContent() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-3xl font-bold">$1,234.56</div>
-              <div className="flex gap-2">
-                <Button>
-                  <ArrowDownLeft className="mr-2 h-4 w-4" />
-                  Deposit
-                </Button>
-                <Button variant="outline" className="bg-transparent">
-                  <ArrowUpRight className="mr-2 h-4 w-4" />
-                  Withdraw
-                </Button>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-3xl font-bold">${balance}</div>
+                  <div className="text-sm text-muted-foreground">USDC Balance: ${usdcBalance}</div>
+                </div>
+                <div className="flex gap-2">
+                  <Button>
+                    <ArrowDownLeft className="mr-2 h-4 w-4" />
+                    Deposit
+                  </Button>
+                  <Button variant="outline" className="bg-transparent">
+                    <ArrowUpRight className="mr-2 h-4 w-4" />
+                    Withdraw
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="border-t pt-4">
+                <div className="space-y-3">
+                  <Label htmlFor="stake-amount">Stake Amount (USDC)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="stake-amount"
+                      type="number"
+                      placeholder="0.00"
+                      value={stakeAmount}
+                      onChange={(e) => setStakeAmount(e.target.value)}
+                      min="0"
+                      step="0.01"
+                    />
+                    <Button 
+                      onClick={handleStake} 
+                      disabled={isStaking || !stakeAmount || parseFloat(stakeAmount) <= 0}
+                      className="min-w-[100px]"
+                    >
+                      {isStaking ? "Staking..." : "Stake"}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
