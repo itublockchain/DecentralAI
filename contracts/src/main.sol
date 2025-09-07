@@ -46,8 +46,12 @@ contract main is ReentrancyGuard {
         require(msg.sender == admin, "Only admin can contribute");
         campaigns[campaignId].total_data_token += data_token_amount;
         campaigns[campaignId].contributes[contributer] += data_token_amount;
-        campaigns[campaignId].contributers.push(contributer);
-        contributedCampaigns[contributer].push(campaignId);
+        
+        // Only add contributor if not already in the list
+        if (campaigns[campaignId].contributes[contributer] == data_token_amount) {
+            campaigns[campaignId].contributers.push(contributer);
+            contributedCampaigns[contributer].push(campaignId);
+        }
     }
 
     function chat (uint in_token, uint out_token, address user, uint campaignId) public {

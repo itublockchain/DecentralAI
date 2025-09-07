@@ -300,7 +300,7 @@ const CONTRACT_ABI = [
 ] as const;
 
 export class BlockchainUtil {
-    private static readonly CONTRACT_ADDRESS = '0x90Cb261abe850f4b0413B8143b66aeC1D97593d8' as const;
+    private static readonly CONTRACT_ADDRESS = '0xdE2e9eA1D2524b0A174eD3F17cde741ff67E1aa0' as const;
     private static walletClient: any;
     private static publicClient: any;
 

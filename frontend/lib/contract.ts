@@ -8,7 +8,7 @@ export const publicClient = createPublicClient({
 })
 
 // Contract configuration
-export const CONTRACT_ADDRESS = '0x90Cb261abe850f4b0413B8143b66aeC1D97593d8'
+export const CONTRACT_ADDRESS = '0xdE2e9eA1D2524b0A174eD3F17cde741ff67E1aa0'
 export const CONTRACT_ABI = [
   {
     "inputs": [

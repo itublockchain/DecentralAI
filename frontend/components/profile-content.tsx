@@ -98,11 +98,6 @@ export function ProfileContent() {
   const handleStake = async () => {
     if (!primaryWallet || !stakeAmount || parseFloat(stakeAmount) <= 0) return
 
-    // Check if user has enough USDC
-    if (parseFloat(usdcBalance) < parseFloat(stakeAmount)) {
-      alert(`Insufficient USDC balance. You have $${usdcBalance} but trying to stake $${stakeAmount}`)
-      return
-    }
 
     setIsStaking(true)
     try {
