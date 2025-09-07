@@ -61,6 +61,8 @@ async function ModelDetailContent({ campaignId }: { campaignId: string }) {
       maxDatasets: Math.floor(campaign.totalDataToken / 50),
       monthlyRevenue: `$${campaign.totalRevenue.toLocaleString()}`,
       currentPoolAmount: campaign.status === "active" ? `$${(campaign.totalRevenue * 1.5).toFixed(0)}` : undefined,
+      totalDataToken: campaign.totalDataToken,
+      totalRevenue: campaign.totalRevenue,
     }
 
     return (

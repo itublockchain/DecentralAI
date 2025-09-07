@@ -138,6 +138,28 @@ export class ContributeService {
                 // Continue with empty array if IPFS load fails
             }
 
+            // Step 6: Check domain relevance before accepting contribution
+            const relevanceCheck = await this.checkDomainRelevance(embeddings, existingVectors);
+            
+            if (!relevanceCheck.isRelevant) {
+                LoggerUtil.logServiceOperation('ContributeService', 'processFileForRAG - contribution rejected', {
+                    fileName: file.originalname,
+                    campaignId,
+                    averageSimilarity: relevanceCheck.averageSimilarity,
+                    threshold: relevanceCheck.threshold,
+                    reason: relevanceCheck.reason
+                });
+                
+                throw new Error(`Contribution rejected: ${relevanceCheck.reason}. Average relevance: ${(relevanceCheck.averageSimilarity * 100).toFixed(1)}% (minimum required: ${(relevanceCheck.threshold * 100)}%)`);
+            }
+
+            LoggerUtil.logServiceOperation('ContributeService', 'processFileForRAG - relevance check passed', {
+                fileName: file.originalname,
+                campaignId,
+                averageSimilarity: relevanceCheck.averageSimilarity,
+                threshold: relevanceCheck.threshold
+            });
+
             // Combine existing and new embeddings
             const allEmbeddings = [...existingVectors, ...embeddings];
             
@@ -204,6 +226,147 @@ export class ContributeService {
         }
 
         return await this.vectorStore.getCampaignStats(vectorDbCid);
+    }
+
+    /**
+     * Check if new contribution is relevant to the existing domain/topic
+     */
+    private async checkDomainRelevance(
+        newEmbeddings: VectorEmbedding[], 
+        existingEmbeddings: VectorEmbedding[]
+    ): Promise<{
+        isRelevant: boolean;
+        averageSimilarity: number;
+        threshold: number;
+        reason?: string;
+    }> {
+        try {
+            // Configurable threshold - can be adjusted per campaign category
+            const RELEVANCE_THRESHOLD = parseFloat(process.env.DOMAIN_RELEVANCE_THRESHOLD || '0.15'); // 15% minimum similarity
+            
+            // If no existing embeddings, accept (first contribution)
+            if (existingEmbeddings.length === 0) {
+                LoggerUtil.logServiceOperation('ContributeService', 'checkDomainRelevance', {
+                    result: 'accepted',
+                    reason: 'first-contribution',
+                    existingCount: 0,
+                    newCount: newEmbeddings.length
+                });
+                
+                return {
+                    isRelevant: true,
+                    averageSimilarity: 1.0,
+                    threshold: RELEVANCE_THRESHOLD,
+                    reason: 'First contribution - automatically accepted'
+                };
+            }
+
+            // Calculate average similarity between new and existing embeddings
+            let totalSimilarity = 0;
+            let comparisons = 0;
+            
+            // Sample-based comparison for performance (max 100 comparisons)
+            const maxComparisons = Math.min(100, newEmbeddings.length * Math.min(10, existingEmbeddings.length));
+            const existingSample = this.sampleEmbeddings(existingEmbeddings, Math.min(10, existingEmbeddings.length));
+            
+            for (const newEmbedding of newEmbeddings) {
+                for (const existingEmbedding of existingSample) {
+                    if (comparisons >= maxComparisons) break;
+                    
+                    const similarity = this.calculateCosineSimilarity(
+                        newEmbedding.vector, 
+                        existingEmbedding.vector
+                    );
+                    totalSimilarity += similarity;
+                    comparisons++;
+                }
+                if (comparisons >= maxComparisons) break;
+            }
+            
+            const averageSimilarity = comparisons > 0 ? totalSimilarity / comparisons : 0;
+            const isRelevant = averageSimilarity >= RELEVANCE_THRESHOLD;
+            
+            LoggerUtil.logServiceOperation('ContributeService', 'checkDomainRelevance', {
+                result: isRelevant ? 'accepted' : 'rejected',
+                averageSimilarity: averageSimilarity.toFixed(4),
+                threshold: RELEVANCE_THRESHOLD,
+                comparisons,
+                newEmbeddingsCount: newEmbeddings.length,
+                existingEmbeddingsCount: existingEmbeddings.length
+            });
+            
+            return {
+                isRelevant,
+                averageSimilarity,
+                threshold: RELEVANCE_THRESHOLD,
+                reason: isRelevant 
+                    ? 'Content is relevant to existing domain' 
+                    : 'Content appears unrelated to existing domain - contribution may be off-topic'
+            };
+            
+        } catch (error) {
+            LoggerUtil.logServiceError('ContributeService', 'checkDomainRelevance', error, {
+                newEmbeddingsCount: newEmbeddings?.length,
+                existingEmbeddingsCount: existingEmbeddings?.length
+            });
+            
+            // On error, accept the contribution (fail-open approach)
+            return {
+                isRelevant: true,
+                averageSimilarity: 0,
+                threshold: 0.15,
+                reason: 'Relevance check failed - contribution accepted by default'
+            };
+        }
+    }
+
+    /**
+     * Sample embeddings for performance optimization
+     */
+    private sampleEmbeddings(embeddings: VectorEmbedding[], count: number): VectorEmbedding[] {
+        if (embeddings.length <= count) {
+            return embeddings;
+        }
+        
+        const step = Math.floor(embeddings.length / count);
+        const sampled: VectorEmbedding[] = [];
+        
+        for (let i = 0; i < embeddings.length; i += step) {
+            sampled.push(embeddings[i]);
+            if (sampled.length >= count) break;
+        }
+        
+        return sampled;
+    }
+
+    /**
+     * Calculate cosine similarity between two vectors
+     */
+    private calculateCosineSimilarity(vectorA: number[], vectorB: number[]): number {
+        if (!vectorA || !vectorB || vectorA.length !== vectorB.length) {
+            return 0;
+        }
+
+        let dotProduct = 0;
+        let normA = 0;
+        let normB = 0;
+
+        for (let i = 0; i < vectorA.length; i++) {
+            const aVal = vectorA[i] || 0;
+            const bVal = vectorB[i] || 0;
+            dotProduct += aVal * bVal;
+            normA += aVal * aVal;
+            normB += bVal * bVal;
+        }
+
+        normA = Math.sqrt(normA);
+        normB = Math.sqrt(normB);
+
+        if (normA === 0 || normB === 0) {
+            return 0;
+        }
+
+        return dotProduct / (normA * normB);
     }
 
     private calculateDataTokenAmount(chunks: DocumentChunk[], embeddings: VectorEmbedding[]): number {

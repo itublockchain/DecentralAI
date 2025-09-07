@@ -12,6 +12,8 @@ interface ModelMetricsProps {
     inputTokenPrice: number
     outputTokenPrice: number
     currentPoolAmount?: string
+    totalDataToken: number
+    totalRevenue: number
   }
 }
 
@@ -19,9 +21,9 @@ export function ModelMetrics({ model }: ModelMetricsProps) {
   const metrics = [
     {
       icon: Database,
-      label: "Dataset Progress",
-      value: `${model.datasetsProvided}/${model.maxDatasets}`,
-      description: model.status === "funding" ? "Datasets collected for training" : "Total datasets used",
+      label: "Total Data Tokens",
+      value: `${model.totalDataToken.toLocaleString()}`,
+      description: model.status === "funding" ? "Data tokens collected for training" : "Total data tokens available",
       color: "text-blue-600",
     },
     {
@@ -50,10 +52,10 @@ export function ModelMetrics({ model }: ModelMetricsProps) {
         ]
       : [
           {
-            icon: TrendingUp,
-            label: "Funding Progress",
-            value: `${Math.round((model.datasetsProvided / model.maxDatasets) * 100)}%`,
-            description: "Campaign completion progress",
+            icon: DollarSign,
+            label: "Total Revenue",
+            value: `$${model.totalRevenue.toLocaleString()}`,
+            description: "Total revenue generated from model usage",
             color: "text-orange-600",
           },
         ]),
