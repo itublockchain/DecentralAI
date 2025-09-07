@@ -1,0 +1,48 @@
+name: ethistnabul-decentralai
+version: 0.1.0
+tee: tdx
+kind: container
+resources:
+  memory: 2048
+  cpus: 1
+  storage:
+    kind: disk-persistent
+    size: 10000
+artifacts:
+  firmware: https://github.com/oasisprotocol/oasis-boot/releases/download/v0.4.2/ovmf.tdx.fd#db47100a7d6a0c1f6983be224137c3f8d7cb09b63bb1c7a5ee7829d8e994a42f
+  kernel: https://github.com/oasisprotocol/oasis-boot/releases/download/v0.4.2/stage1.bin#02903bd0ddfe1e3552e95767f1be17e801690d73d90bb1e800aa4879ba46c4d7
+  stage2: https://github.com/oasisprotocol/oasis-boot/releases/download/v0.4.2/stage2-podman.tar.bz2#6f2487aa064460384309a58c858ffea9316e739331b5c36789bb2f61117869d6
+  container:
+    runtime: https://github.com/oasisprotocol/oasis-sdk/releases/download/rofl-containers%2Fv0.5.0/rofl-containers#800be74e543f1d10d12ef6fadce89dd0a0ce7bc798dbab4f8d7aa012d82fbff1
+    compose: docker-compose.yaml
+deployments:
+  default:
+    app_id: rofl1qpqj95pgphjl5paw2s0zen6e9k68zhg2hu5wcedv
+    network: testnet
+    paratime: sapphire
+    admin: extypen
+    trust_root:
+      height: 26534137
+      hash: 62dca78c1ce1ed5ee9b7d7a5791e29ba89333c9b75b8f1917d551d2a16f5aa6c
+    policy:
+      quotes:
+        pcs:
+          tcb_validity_period: 30
+          min_tcb_evaluation_data_number: 18
+          tdx: {}
+      enclaves:
+        - id: wjgjAUZmIGwetHsqk3oXnrn2OKkoEQQUAmryLk2e3FcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+        - id: U7tK17MNqG+JR9KgEK6sjrW/5SoIwggbnYs8flTEkCoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+      endorsements:
+        - any: {}
+      fees: endorsing_node
+      max_expiration: 3
+    secrets:
+      - name: TOKEN
+        value: pGJwa1ggQQZ1zjOhNulwMiCti66B1amQwEda4AgLXlEt5lv8oAhkbmFtZVVNEaZWsU3QYR3h/i/ryThJw1xKjuBlbm9uY2VPvS5+yLjKKItBzpffQLg0ZXZhbHVlUCnCd69yzWsMfaaQIfsz1/E=
+      - name: eyJvcmciOiI2NDdlNjg2OTFjNGQxNzAwMDFkYzA5ZWEiLCJpZCI6ImFINTZfR01xOHh4WkIwT3BFSEwwckMxZ3RfSkN3QXc4RjhaOTM2NjN6YWd4TnpRMk9ERXdNREEwTVRFNSIsImgiOiJtdXJtdXIxMjgifQ==
+        value: pGJwa1gg9yQvveyLC1IbEpFz+lEgk1QzET2uE4W6+BQs5wrO9XNkbmFtZViwhmakUKDmS02RfkXIEalkTs0m21J+xY4OCrnBSBB8xruiFGywd+sQmjGjsKt3T/ZTJ+bYv6I9mfzksJC+ItGYY9AvZd1FWgVGUnbe1bk6H1SN9Xls0wx2melTNqfYU1DRwwYfIVHfjPZqRxlSpVpwZd96SblQYFOXr/4HTGxiWufbk8UHiv/Z1eiUK73js+XlEZM4ms+35+PQnehyB+61QNwM1abiMF4M6Y2ZbVEJ0Hdlbm9uY2VPXz40X+SDo/Md57NtMcBcZXZhbHVlUEwtsbzV3t+MBZN2f3ZRVqI=
+      - name: cZLbFA_1kEp2_gqGvkAcrLt_RtVBlg0O6uwm78mqyq4=
+        value: pGJwa1ggoK1YDVbeiLYueNiysBSDC6nRBiNLa0xxz4uWAsWafhpkbmFtZVg8qhvSdiBsrRpLIXonCvAcvFDEHTKG0QdauZGYRh7o+FEWagdxVgeb5W1wPRyQGBMznd6u+IstgdB+nMz6ZW5vbmNlTy5jQqNfvmM3rrB5/U4AimV2YWx1ZVDJ5b5b9i1cNY2CNgb2sACu
+      - name: 882c88c082abb0197783009600675377:a0f70d3b1affd92baffc6a6f72e09601
+        value: pGJwa1ggAtEVJ6QuoSoh4Ql3bjlhjU4myhKc/f5+FZhE3Ssg92hkbmFtZVhRBIsIECBnkAlaVzHMD+o1HYk0MwlKQ+lbDwca1Hofo6reoGwTX6+klLmWIXIdzMAR5mGtKvFV9YId9UfdTP/UW6EeGqpsl3K+1CEi7Io7SjipZW5vbmNlT4ipjLlDCNKQaz0rt++CZGV2YWx1ZVApTukVsOOzfsqdX9HBlXU7
