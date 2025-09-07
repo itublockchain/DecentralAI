@@ -84,6 +84,11 @@ const CONTRACT_ABI = [
                 internalType: "uint256",
                 name: "data_token_amount",
                 type: "uint256"
+            },
+            {
+                internalType: "string",
+                name: "cid",
+                type: "string"
             }
         ],
         name: "contribute",
@@ -300,7 +305,7 @@ const CONTRACT_ABI = [
 ] as const;
 
 export class BlockchainUtil {
-    private static readonly CONTRACT_ADDRESS = '0xdE2e9eA1D2524b0A174eD3F17cde741ff67E1aa0' as const;
+    private static readonly CONTRACT_ADDRESS = '0x1a38952146d9cDa4dD3B6405B1B62b6A8ccDe5AB' as const;
     private static walletClient: any;
     private static publicClient: any;
 
@@ -342,6 +347,41 @@ export class BlockchainUtil {
         } catch (error) {
             LoggerUtil.logServiceError('BlockchainUtil', 'initialize', error);
             throw new Error(`Failed to initialize blockchain clients: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Create empty IPFS vector database and return CID
+     */
+    static async createEmptyVectorDatabase(campaignId: number): Promise<string> {
+        try {
+            // Import IPFSEncryptionUtil here to avoid circular dependency
+            const { IPFSEncryptionUtil } = await import('./ipfs-encryption.util');
+            
+            // Create a UUID for the vector database
+            const { v4: uuidv4 } = await import('uuid');
+            const vectorDbUuid = uuidv4();
+
+            // Create empty vector array
+            const emptyVectors: any[] = [];
+
+            // Upload empty vector database to IPFS
+            const ipfsHash = await IPFSEncryptionUtil.uploadVectorsToIPFS(vectorDbUuid, emptyVectors);
+
+            LoggerUtil.logServiceOperation('BlockchainUtil', 'createEmptyVectorDatabase', {
+                campaignId,
+                vectorDbUuid,
+                ipfsHash,
+                emptyVectors: true
+            });
+
+            return ipfsHash;
+
+        } catch (error) {
+            LoggerUtil.logServiceError('BlockchainUtil', 'createEmptyVectorDatabase', error, {
+                campaignId
+            });
+            throw new Error(`Failed to create empty vector database: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 
@@ -511,9 +551,9 @@ export class BlockchainUtil {
     }
 
     /**
-     * Record a contribution on the blockchain
+     * Record a contribution on the blockchain with updated IPFS CID
      */
-    static async recordContribution(campaignId: number, contributorAddress: string, dataTokenAmount: number): Promise<string> {
+    static async recordContribution(campaignId: number, contributorAddress: string, dataTokenAmount: number, ipfsCid: string): Promise<string> {
         try {
             if (!this.walletClient || !this.publicClient) {
                 this.initialize();
@@ -522,7 +562,8 @@ export class BlockchainUtil {
             LoggerUtil.logServiceOperation('BlockchainUtil', 'recordContribution - start', {
                 campaignId,
                 contributorAddress,
-                dataTokenAmount
+                dataTokenAmount,
+                ipfsCid
             });
 
             // Get contract instance
@@ -532,18 +573,20 @@ export class BlockchainUtil {
                 client: { public: this.publicClient, wallet: this.walletClient }
             });
 
-            // Execute contribute transaction
+            // Execute contribute transaction with updated IPFS CID
             const txHash = await contract.write.contribute([
                 BigInt(campaignId),
                 contributorAddress as `0x${string}`,
-                BigInt(dataTokenAmount)
+                BigInt(dataTokenAmount),
+                ipfsCid
             ]);
 
             LoggerUtil.logServiceOperation('BlockchainUtil', 'recordContribution - transaction sent', {
                 transactionHash: txHash,
                 campaignId,
                 contributorAddress,
-                dataTokenAmount
+                dataTokenAmount,
+                ipfsCid
             });
 
             // Wait for transaction confirmation
@@ -558,7 +601,8 @@ export class BlockchainUtil {
                 gasUsed: receipt.gasUsed,
                 status: receipt.status,
                 campaignId,
-                contributorAddress
+                contributorAddress,
+                ipfsCid
             });
 
             if (receipt.status === 'reverted') {
@@ -571,7 +615,8 @@ export class BlockchainUtil {
             LoggerUtil.logServiceError('BlockchainUtil', 'recordContribution', error, {
                 campaignId,
                 contributorAddress,
-                dataTokenAmount
+                dataTokenAmount,
+                ipfsCid
             });
 
             throw new Error(`Failed to record contribution on blockchain: ${error instanceof Error ? error.message : 'Unknown error'}`);

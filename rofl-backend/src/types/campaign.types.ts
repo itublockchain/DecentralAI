@@ -22,6 +22,7 @@ export interface ModelCampaignResponse {
     data: {
         campaignId: number;
         vectorStoreId: string; // UUID
+        vectorDbCid: string; // IPFS hash or UUID
         transactionHash: string;
         initialDataTokens: number;
         processingInfo: {
@@ -29,13 +30,14 @@ export interface ModelCampaignResponse {
             totalEmbeddings: number;
             vectorDimension: number;
         };
+        ipfsEnabled: boolean;
     };
 }
 
 export interface CreateCampaignContractArgs {
     name: string;
     description: string;
-    vector_db_cid: string; // UUID in our case
+    vector_db_cid: string; // IPFS hash or UUID
     owner: string; // address
     category: Category;
     in_token_price: bigint;

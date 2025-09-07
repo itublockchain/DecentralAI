@@ -5,7 +5,9 @@ import {
     ValidationUtil, 
     RAGUtil, 
     FileStorageUtil,
-    BlockchainUtil
+    BlockchainUtil,
+    VectorStore,
+    IPFSEncryptionUtil
 } from '../utils';
 import { 
     ModelCampaignRequest, 
@@ -15,9 +17,30 @@ import {
 } from '../types/campaign.types';
 
 export class ModelCampaignService {
+    private useIPFS: boolean;
+
     constructor() {
         // Initialize blockchain utilities
         BlockchainUtil.initialize();
+        
+        // Check if IPFS is enabled
+        this.useIPFS = process.env.USE_IPFS_STORAGE === 'true';
+        
+        if (this.useIPFS) {
+            try {
+                IPFSEncryptionUtil.initialize();
+                LoggerUtil.logServiceOperation('ModelCampaignService', 'constructor', {
+                    ipfsEnabled: true
+                });
+            } catch (error) {
+                LoggerUtil.logServiceError('ModelCampaignService', 'constructor - IPFS init failed', error);
+                this.useIPFS = false;
+                LoggerUtil.logServiceOperation('ModelCampaignService', 'constructor', {
+                    ipfsEnabled: false,
+                    reason: 'IPFS initialization failed'
+                });
+            }
+        }
     }
 
     /**
@@ -30,13 +53,10 @@ export class ModelCampaignService {
             // Validate input data
             this.validateModelCampaignData(data);
 
-            const vectorStoreId = uuidv4();
-
             LoggerUtil.logServiceOperation('ModelCampaignService', 'createModelCampaign - started', {
                 name: data.name,
                 owner: data.owner,
                 category: data.category,
-                vectorStoreId,
                 fileName: data.file.originalname
             });
 
@@ -45,7 +65,6 @@ export class ModelCampaignService {
             const textContent = FileProcessor.extractTextContent(fileResult.content);
 
             LoggerUtil.logServiceOperation('ModelCampaignService', 'createModelCampaign - file processed', {
-                vectorStoreId,
                 textLength: textContent.length,
                 fileName: data.file.originalname
             });
@@ -54,7 +73,6 @@ export class ModelCampaignService {
             const chunks = RAGUtil.splitIntoChunks(textContent, data.file.originalname, 0); // Use 0 as temporary campaign ID
 
             LoggerUtil.logServiceOperation('ModelCampaignService', 'createModelCampaign - chunks created', {
-                vectorStoreId,
                 totalChunks: chunks.length
             });
 
@@ -62,18 +80,42 @@ export class ModelCampaignService {
             const embeddings = await RAGUtil.generateEmbeddings(chunks);
 
             LoggerUtil.logServiceOperation('ModelCampaignService', 'createModelCampaign - embeddings generated', {
-                vectorStoreId,
                 totalEmbeddings: embeddings.length,
                 vectorDimension: embeddings[0]?.vector.length || 0
             });
 
-            // Step 4: Save vectors to file system with UUID
-            await FileStorageUtil.saveVectorsByUUID(vectorStoreId, embeddings);
+            // Step 4: Save vectors and get IPFS CID
+            let vectorDbCid: string;
+            let vectorStoreId: string;
+            
+            if (this.useIPFS) {
+                // Generate UUID for internal tracking
+                vectorStoreId = uuidv4();
+                
+                // Upload vectors to IPFS and get CID
+                vectorDbCid = await IPFSEncryptionUtil.uploadVectorsToIPFS(vectorStoreId, embeddings);
+                
+                // Store in VectorStore for caching with IPFS CID as key
+                const vectorStore = VectorStore.getInstance();
+                await vectorStore.storeEmbeddings(vectorDbCid, embeddings);
+                vectorStore.setIPFSHash(vectorDbCid, vectorDbCid); // CID maps to itself
 
-            LoggerUtil.logServiceOperation('ModelCampaignService', 'createModelCampaign - vectors saved', {
-                vectorStoreId,
-                savedVectors: embeddings.length
-            });
+                LoggerUtil.logServiceOperation('ModelCampaignService', 'createModelCampaign - vectors saved to IPFS', {
+                    vectorStoreId,
+                    savedVectors: embeddings.length,
+                    vectorDbCid
+                });
+            } else {
+                // Fallback to local storage with UUID as CID
+                vectorStoreId = uuidv4();
+                vectorDbCid = vectorStoreId; // Use UUID as CID for local storage
+                await FileStorageUtil.saveVectorsByUUID(vectorStoreId, embeddings);
+
+                LoggerUtil.logServiceOperation('ModelCampaignService', 'createModelCampaign - vectors saved locally', {
+                    vectorStoreId,
+                    savedVectors: embeddings.length
+                });
+            }
 
             // Step 5: Calculate initial data tokens
             const initialDataTokens = this.calculateDataTokens(textContent, chunks.length);
@@ -89,7 +131,7 @@ export class ModelCampaignService {
             const contractArgs: CreateCampaignContractArgs = {
                 name: data.name,
                 description: data.description,
-                vector_db_cid: vectorStoreId, // Using UUID as CID
+                vector_db_cid: vectorDbCid, // Using IPFS CID or UUID
                 owner: data.owner,
                 category: data.category,
                 in_token_price: BigInt(data.in_token_price),
@@ -100,9 +142,9 @@ export class ModelCampaignService {
             const transactionHash = await BlockchainUtil.createCampaign(contractArgs);
 
             LoggerUtil.logServiceOperation('ModelCampaignService', 'createModelCampaign - blockchain created', {
-                vectorStoreId,
+                vectorDbCid,
                 transactionHash,
-                contractAddress: '0xF3CCd34F751Ef7777d8Fd4e76858c233Ac60fb23'
+                ipfsEnabled: this.useIPFS
             });
 
             // Step 7: Get the campaign ID from blockchain
@@ -113,20 +155,22 @@ export class ModelCampaignService {
                 message: 'Model campaign created successfully',
                 data: {
                     campaignId,
-                    vectorStoreId,
+                    vectorStoreId: vectorDbCid, // Use CID as primary identifier
+                    vectorDbCid,
                     transactionHash,
                     initialDataTokens,
                     processingInfo: {
                         totalChunks: chunks.length,
                         totalEmbeddings: embeddings.length,
                         vectorDimension: embeddings[0]?.vector.length || 0
-                    }
+                    },
+                    ipfsEnabled: this.useIPFS
                 }
             };
 
             LoggerUtil.logServiceOperation('ModelCampaignService', 'createModelCampaign - completed', {
                 campaignId,
-                vectorStoreId,
+                vectorDbCid,
                 transactionHash,
                 processingTimeMs: Date.now() - startTime,
                 success: true

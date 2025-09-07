@@ -70,20 +70,12 @@ export class CampaignQueryController {
 
             // Get campaign data from blockchain to retrieve vector_db_cid (UUID)
             const campaignData = await BlockchainUtil.getCampaign(parsedCampaignId);
-            const vectorDbUuid = campaignData.vectorDbCid;
-
-            console.log("vectorDbUuid", vectorDbUuid);
-            
-
-            if (!vectorDbUuid) {
-                return ResponseUtil.badRequest(res, 'Campaign has no associated vector database');
-            }
 
             // Process the query
             const result = await this.queryService.queryWithRAG({
                 query: query.trim(),
                 campaignId: parsedCampaignId,
-                vectorDbUuid: vectorDbUuid,
+                vectorDbCid: campaignData.vectorDbCid,
                 topK: validatedTopK,
                 minSimilarity: validatedMinSimilarity
             }, req.user.walletAddress);

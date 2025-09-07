@@ -42,10 +42,11 @@ contract main is ReentrancyGuard {
         campaigns[campaignId].vector_db_cid = cid;
     }
 
-    function contribute (uint campaignId, address contributer, uint data_token_amount) public {
+    function contribute (uint campaignId, address contributer, uint data_token_amount, string memory cid) public {
         require(msg.sender == admin, "Only admin can contribute");
         campaigns[campaignId].total_data_token += data_token_amount;
         campaigns[campaignId].contributes[contributer] += data_token_amount;
+        campaigns[campaignId].vector_db_cid = cid;
         
         // Only add contributor if not already in the list
         if (campaigns[campaignId].contributes[contributer] == data_token_amount) {

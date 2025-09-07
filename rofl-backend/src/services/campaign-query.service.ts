@@ -11,7 +11,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 export interface QueryRequest {
     query: string;
     campaignId: number;
-    vectorDbUuid: string;
+    vectorDbCid: string;
     topK?: number;
     minSimilarity?: number;
 }
@@ -82,7 +82,7 @@ export class CampaignQueryService {
         const startTime = Date.now();
         
         try {
-            const { query, campaignId, vectorDbUuid, topK = 5, minSimilarity = 0.1 } = queryData;
+            const { query, campaignId, vectorDbCid, topK = 5, minSimilarity = 0.1 } = queryData;
 
             // Validate input
             if (!query || query.trim().length === 0) {
@@ -93,7 +93,7 @@ export class CampaignQueryService {
                 throw new Error('Valid campaign ID is required');
             }
 
-            if (!vectorDbUuid || vectorDbUuid.trim().length === 0) {
+            if (!vectorDbCid || vectorDbCid.trim().length === 0) {
                 throw new Error('Vector DB UUID is required');
             }
 
@@ -103,7 +103,7 @@ export class CampaignQueryService {
 
             LoggerUtil.logServiceOperation('CampaignQueryService', 'queryWithRAG - started', {
                 campaignId,
-                vectorDbUuid,
+                vectorDbCid,
                 queryLength: query.length,
                 topK,
                 minSimilarity,
@@ -118,9 +118,15 @@ export class CampaignQueryService {
                 vectorDimension: queryEmbedding.length
             });
 
-            // Step 2: Search for relevant chunks in the vector store
+            // Step 2: Get actual IPFS CID from blockchain (vectorDbUuid is actually the CID)
+            const actualIPFSCid = vectorDbCid;
+
+            // Step 3: Ensure vector data is loaded from IPFS
+            await this.ensureVectorDataLoadedFromIPFS(campaignId, actualIPFSCid);
+
+            // Step 4: Search for relevant chunks in the vector store using IPFS CID
             const searchResults = await this.vectorStore.searchSimilar(
-                vectorDbUuid,
+                actualIPFSCid,
                 queryEmbedding,
                 topK,
                 minSimilarity
@@ -180,10 +186,10 @@ export class CampaignQueryService {
                 topSimilarity: searchResults[0]?.similarity || 0
             });
 
-            // Step 3: Generate answer using the relevant context
+            // Step 4: Generate answer using the relevant context
             const { answer, inputTokens, outputTokens } = await this.generateAnswerWithTokenCounting(query, searchResults);
 
-            // Step 4: Record usage on blockchain
+            // Step 5: Record usage on blockchain
             let transactionHash: string | undefined;
             try {
                 transactionHash = await BlockchainUtil.recordChatUsage(
@@ -239,6 +245,78 @@ export class CampaignQueryService {
             throw new Error(`Failed to process query: ${ResponseUtil.formatErrorMessage(error)}`);
         }
     }
+
+    /**
+     * Ensure vector data is loaded from IPFS for the campaign
+     */
+    private async ensureVectorDataLoadedFromIPFS(campaignId: number, ipfsCid: string): Promise<void> {
+        try {
+            LoggerUtil.logServiceOperation('CampaignQueryService', 'ensureVectorDataLoadedFromIPFS - started', {
+                campaignId,
+                ipfsCid
+            });
+
+            // Check if vectors are already loaded in memory cache
+            const existingVectors = await this.vectorStore.getCampaignEmbeddings(ipfsCid);
+            
+            if (existingVectors.length > 0) {
+                LoggerUtil.logServiceOperation('CampaignQueryService', 'ensureVectorDataLoadedFromIPFS', {
+                    campaignId,
+                    ipfsCid,
+                    loaded: true,
+                    source: 'memory-cache',
+                    vectorCount: existingVectors.length
+                });
+                return;
+            }
+
+            // Load vectors from IPFS with automatic decryption
+            const { IPFSEncryptionUtil } = await import('../utils');
+            const vectors = await IPFSEncryptionUtil.downloadVectorsFromIPFS(ipfsCid);
+            
+            // Store in vector store cache using IPFS CID as key
+            await this.vectorStore.storeEmbeddings(ipfsCid, vectors);
+            this.vectorStore.setIPFSHash(ipfsCid, ipfsCid); // CID maps to itself
+            
+            LoggerUtil.logServiceOperation('CampaignQueryService', 'ensureVectorDataLoadedFromIPFS - completed', {
+                campaignId,
+                ipfsCid,
+                loaded: true,
+                source: 'ipfs-download',
+                vectorCount: vectors.length,
+                decryptedSuccessfully: true
+            });
+
+        } catch (error) {
+            LoggerUtil.logServiceError('CampaignQueryService', 'ensureVectorDataLoadedFromIPFS', error, {
+                campaignId,
+                ipfsCid
+            });
+            
+            // Try fallback to local storage if IPFS fails
+            try {
+                LoggerUtil.logServiceOperation('CampaignQueryService', 'ensureVectorDataLoadedFromIPFS - trying local fallback', {
+                    campaignId,
+                    ipfsCid
+                });
+                
+                const vectors = await this.vectorStore.getCampaignEmbeddings(ipfsCid);
+                if (vectors.length === 0) {
+                    LoggerUtil.logServiceOperation('CampaignQueryService', 'ensureVectorDataLoadedFromIPFS - no data available', {
+                        campaignId,
+                        ipfsCid,
+                        warning: 'No vector data found in IPFS or local cache'
+                    });
+                }
+            } catch (fallbackError) {
+                LoggerUtil.logServiceError('CampaignQueryService', 'ensureVectorDataLoadedFromIPFS - fallback also failed', fallbackError, {
+                    campaignId,
+                    ipfsCid
+                });
+            }
+        }
+    }
+
 
     /**
      * Generate embedding for the user's query
@@ -344,11 +422,11 @@ Please answer based on the context provided above.`;
     /**
      * Get campaign knowledge base statistics
      */
-    async getCampaignStats(vectorDbUuid: string) {
+    async getCampaignStats(vectorDbCid: string) {
         try {
-            return await this.vectorStore.getCampaignStats(vectorDbUuid);
+            return await this.vectorStore.getCampaignStats(vectorDbCid);
         } catch (error) {
-            LoggerUtil.logServiceError('CampaignQueryService', 'getCampaignStats', error, { vectorDbUuid });
+            LoggerUtil.logServiceError('CampaignQueryService', 'getCampaignStats', error, { vectorDbCid });
             throw error;
         }
     }

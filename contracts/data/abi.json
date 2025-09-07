@@ -71,6 +71,11 @@
           "internalType": "uint256",
           "name": "data_token_amount",
           "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "cid",
+          "type": "string"
         }
       ],
       "name": "contribute",

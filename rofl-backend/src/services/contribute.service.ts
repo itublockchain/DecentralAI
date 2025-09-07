@@ -75,6 +75,7 @@ export class ContributeService {
     private async processFileForRAG(file: Express.Multer.File, campaignId: number): Promise<{
         chunks: DocumentChunk[];
         embeddings: VectorEmbedding[];
+        newIPFSCid: string;
     }> {
         try {
             // Step 1: Process file and extract text content
@@ -106,25 +107,66 @@ export class ContributeService {
                 vectorDimension: embeddings[0]?.vector.length || 0
             });
 
-            // Step 4: Get campaign UUID from blockchain and store embeddings in vector store
+            // Step 4: Get current IPFS CID from blockchain
             const campaignData = await BlockchainUtil.getCampaign(campaignId);
-            const vectorDbUuid = campaignData.vectorDbCid;
+            const currentIPFSCid = campaignData.vectorDbCid;
 
-            if (!vectorDbUuid) {
-                throw new Error(`Campaign ${campaignId} has no associated vector database UUID`);
+            if (!currentIPFSCid) {
+                throw new Error(`Campaign ${campaignId} has no associated IPFS CID`);
             }
 
-            await this.vectorStore.storeEmbeddings(vectorDbUuid, embeddings);
+            // Step 5: Load existing vectors from IPFS and append new ones
+            const { IPFSEncryptionUtil } = await import('../utils');
+            let existingVectors: VectorEmbedding[] = [];
+            
+            try {
+                // Download existing vectors from IPFS
+                existingVectors = await IPFSEncryptionUtil.downloadVectorsFromIPFS(currentIPFSCid);
+                
+                LoggerUtil.logServiceOperation('ContributeService', 'processFileForRAG - existing vectors loaded', {
+                    fileName: file.originalname,
+                    campaignId,
+                    existingVectorCount: existingVectors.length,
+                    currentIPFSCid
+                });
+            } catch (error) {
+                LoggerUtil.logServiceError('ContributeService', 'processFileForRAG - failed to load existing vectors', error, {
+                    fileName: file.originalname,
+                    campaignId,
+                    currentIPFSCid
+                });
+                // Continue with empty array if IPFS load fails
+            }
+
+            // Combine existing and new embeddings
+            const allEmbeddings = [...existingVectors, ...embeddings];
+            
+            // Generate new UUID for internal tracking only
+            const { v4: uuidv4 } = await import('uuid');
+            const internalUuid = uuidv4();
+
+            // Upload combined vectors to IPFS and get new CID
+            const newIPFSCid = await IPFSEncryptionUtil.uploadVectorsToIPFS(internalUuid, allEmbeddings);
+
+            // Store in vector store cache using CID as key
+            await this.vectorStore.storeEmbeddings(newIPFSCid, allEmbeddings);
+            this.vectorStore.setIPFSHash(newIPFSCid, newIPFSCid); // CID maps to itself
 
             LoggerUtil.logServiceOperation('ContributeService', 'processFileForRAG - completed', {
                 fileName: file.originalname,
                 campaignId,
                 chunks: chunks.length,
-                embeddings: embeddings.length,
+                newEmbeddings: embeddings.length,
+                totalEmbeddings: allEmbeddings.length,
+                newIPFSCid,
                 storedSuccessfully: true
             });
 
-            return { chunks, embeddings };
+            return { 
+                chunks, 
+                embeddings: allEmbeddings, // Return all embeddings (existing + new)
+                newIPFSCid 
+            };
         } catch (error) {
             LoggerUtil.logServiceError('ContributeService', 'processFileForRAG', error, {
                 fileName: file?.originalname,
@@ -153,15 +195,15 @@ export class ContributeService {
      * Gets RAG statistics for a campaign
      */
     async getCampaignRAGStats(campaignId: number) {
-        // Get campaign UUID from blockchain
+        // Get campaign IPFS CID from blockchain
         const campaignData = await BlockchainUtil.getCampaign(campaignId);
-        const vectorDbUuid = campaignData.vectorDbCid;
+        const vectorDbCid = campaignData.vectorDbCid;
 
-        if (!vectorDbUuid) {
-            throw new Error(`Campaign ${campaignId} has no associated vector database UUID`);
+        if (!vectorDbCid) {
+            throw new Error(`Campaign ${campaignId} has no associated vector database CID`);
         }
 
-        return await this.vectorStore.getCampaignStats(vectorDbUuid);
+        return await this.vectorStore.getCampaignStats(vectorDbCid);
     }
 
     private calculateDataTokenAmount(chunks: DocumentChunk[], embeddings: VectorEmbedding[]): number {
@@ -197,13 +239,17 @@ export class ContributeService {
             }
 
             // Process file through RAG pipeline: chunk -> embed -> store
-            const { chunks, embeddings } = await this.processFileForRAG(file, campaignId);
+            const { chunks, embeddings, newIPFSCid } = await this.processFileForRAG(file, campaignId);
 
-            // Calculate data token amount based on contribution
-            const dataTokenAmount = this.calculateDataTokenAmount(chunks, embeddings);
+            // Calculate data token amount based on NEW contribution only
+            const dataTokenAmount = this.calculateDataTokenAmount(chunks, embeddings.slice(-chunks.length)); // Only new embeddings
 
-            // Record contribution on blockchain
-            await BlockchainUtil.recordContribution(campaignId, walletAddress, dataTokenAmount);
+            if (!newIPFSCid) {
+                throw new Error('New IPFS CID not generated after storing vectors');
+            }
+
+            // Record contribution on blockchain with updated IPFS hash
+            await BlockchainUtil.recordContribution(campaignId, walletAddress, dataTokenAmount, newIPFSCid);
 
             const result: ContributeResult = {
                 success: true,
