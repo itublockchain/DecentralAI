@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { CampaignQueryService } from '../services/campaign-query.service';
 import { LoggerUtil, ValidationUtil, ResponseUtil } from '../utils';
+import { BlockchainUtil } from '../utils/blockchain.util';
 
 export class CampaignQueryController {
     private queryService: CampaignQueryService;
@@ -24,7 +25,7 @@ export class CampaignQueryController {
             }
 
             const parsedCampaignId = parseInt(campaignId, 10);
-            if (!Number.isInteger(parsedCampaignId) || parsedCampaignId <= 0) {
+            if (!Number.isInteger(parsedCampaignId) || parsedCampaignId < 0) {
                 return ResponseUtil.badRequest(res, 'Invalid campaign ID');
             }
 
@@ -62,10 +63,22 @@ export class CampaignQueryController {
                 return ResponseUtil.serviceUnavailable(res, 'Query service is not ready. Please try again in a moment.');
             }
 
+            // Get campaign data from blockchain to retrieve vector_db_cid (UUID)
+            const campaignData = await BlockchainUtil.getCampaign(parsedCampaignId);
+            const vectorDbUuid = campaignData.vectorDbCid;
+
+            console.log("vectorDbUuid", vectorDbUuid);
+            
+
+            if (!vectorDbUuid) {
+                return ResponseUtil.badRequest(res, 'Campaign has no associated vector database');
+            }
+
             // Process the query
             const result = await this.queryService.queryWithRAG({
                 query: query.trim(),
                 campaignId: parsedCampaignId,
+                vectorDbUuid: vectorDbUuid,
                 topK: validatedTopK,
                 minSimilarity: validatedMinSimilarity
             });
@@ -112,7 +125,7 @@ export class CampaignQueryController {
             }
 
             const parsedCampaignId = parseInt(campaignId, 10);
-            if (!Number.isInteger(parsedCampaignId) || parsedCampaignId <= 0) {
+            if (!Number.isInteger(parsedCampaignId) || parsedCampaignId < 0) {
                 return ResponseUtil.badRequest(res, 'Invalid campaign ID');
             }
 
@@ -120,7 +133,15 @@ export class CampaignQueryController {
                 campaignId: parsedCampaignId
             });
 
-            const stats = await this.queryService.getCampaignStats(parsedCampaignId);
+            // Get campaign data from blockchain to retrieve vector_db_cid (UUID)
+            const campaignData = await BlockchainUtil.getCampaign(parsedCampaignId);
+            const vectorDbUuid = campaignData.vectorDbCid;
+
+            if (!vectorDbUuid) {
+                return ResponseUtil.badRequest(res, 'Campaign has no associated vector database');
+            }
+
+            const stats = await this.queryService.getCampaignStats(vectorDbUuid);
 
             LoggerUtil.logControllerOperation('CampaignQueryController', 'getStats - completed', {
                 campaignId: parsedCampaignId,

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Rocket, Database, DollarSign, Info, Loader2 } from "lucide-react"
+import { Rocket, Database, DollarSign, Info, Loader2, Upload, X } from "lucide-react"
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
 import { CONTRACT_ADDRESS, CONTRACT_ABI, Category } from "@/lib/contract"
 import { parseUnits } from "viem"
@@ -31,15 +31,50 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
     name: "",
     description: "",
     category: "",
-    vectorDbCid: "",
     inputTokenPrice: 0.001,
     outputTokenPrice: 0.002,
-    initialDataToken: 1000,
   })
+  
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
   const categories = ["Medical", "Legal", "Financial", "Research", "General"]
 
   const handleNext = () => {
+    if (step === 1) {
+      // Validate step 1 requirements
+      if (!formData.name.trim()) {
+        toast({
+          title: "Name Required",
+          description: "Please enter a campaign name.",
+          variant: "destructive",
+        })
+        return
+      }
+      if (!formData.category) {
+        toast({
+          title: "Category Required",
+          description: "Please select a category.",
+          variant: "destructive",
+        })
+        return
+      }
+      if (!selectedFile) {
+        toast({
+          title: "File Required",
+          description: "Please upload an initial data file.",
+          variant: "destructive",
+        })
+        return
+      }
+      if (!formData.description.trim()) {
+        toast({
+          title: "Description Required",
+          description: "Please enter a description.",
+          variant: "destructive",
+        })
+        return
+      }
+    }
     if (step < 3) setStep(step + 1)
   }
 
@@ -57,10 +92,18 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
       return
     }
 
+    if (!selectedFile) {
+      toast({
+        title: "File Required",
+        description: "Please upload an initial data file for cold start prevention.",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       setLoading(true)
 
-      const walletClient = await primaryWallet.getWalletClient()
       const account = primaryWallet.address
 
       // Get category enum value
@@ -69,31 +112,49 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
         throw new Error("Invalid category selected")
       }
 
-      // Convert prices to wei (18 decimals)
-      const inTokenPriceWei = parseUnits(formData.inputTokenPrice.toString(), 18)
-      const outTokenPriceWei = parseUnits(formData.outputTokenPrice.toString(), 18)
+      // Create FormData for API request
+      const apiFormData = new FormData()
+      apiFormData.append('name', formData.name)
+      apiFormData.append('description', formData.description)
+      apiFormData.append('owner', account as string)
+      apiFormData.append('category', categoryId.toString())
+      apiFormData.append('in_token_price', formData.inputTokenPrice.toString())
+      apiFormData.append('out_token_price', formData.outputTokenPrice.toString())
+      apiFormData.append('file', selectedFile)
 
-      // Call contract function
-      const hash = await walletClient.writeContract({
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: 'createCampaign',
-        args: [
-          formData.name,
-          formData.description,
-          formData.vectorDbCid || "QmDefaultCID", // Default if empty
-          account as `0x${string}`, // owner
-          categoryId, // category enum
-          inTokenPriceWei, // in_token_price
-          outTokenPriceWei, // out_token_price  
-          BigInt(formData.initialDataToken), // initial_data_token
-        ],
-        account: account as `0x${string}`,
+      // Get the JWT token
+      const rawToken = localStorage.getItem('dynamic_authentication_token')
+
+      if (!rawToken) {
+        toast({
+          title: "Authentication Error",
+          description: "Please log in to contribute data",
+          variant: "destructive"
+        })
+        return
+      }
+
+      // Remove quotes from token if they exist
+      const token = rawToken.replace(/^"(.*)"$/, '$1')
+
+      // Make API request
+      const response = await fetch('http://localhost:4000/api/model-campaign', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: apiFormData,
       })
+
+      if (!response.ok) {
+        throw new Error('Failed to create campaign')
+      }
+
+      const result = await response.json()
 
       toast({
         title: "Campaign Created!",
-        description: `Transaction hash: ${hash}`,
+        description: "Your model campaign has been successfully created with initial data.",
       })
 
       // Reset form and close modal
@@ -101,11 +162,10 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
         name: "",
         description: "",
         category: "",
-        vectorDbCid: "",
         inputTokenPrice: 0.001,
         outputTokenPrice: 0.002,
-        initialDataToken: 1000,
       })
+      setSelectedFile(null)
       setStep(1)
       onClose()
 
@@ -124,7 +184,7 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
     }
   }
 
-  const estimatedMonthlyRevenue = formData.initialDataToken * formData.outputTokenPrice // Rough estimate
+  const estimatedMonthlyRevenue = 1000 * formData.outputTokenPrice // Rough estimate based on typical initial allocation
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -187,15 +247,56 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
                 </div>
 
                 <div>
-                  <Label htmlFor="vectorDbCid">Vector DB CID (Optional)</Label>
-                  <Input
-                    id="vectorDbCid"
-                    placeholder="IPFS CID for vector database"
-                    value={formData.vectorDbCid}
-                    onChange={(e) => setFormData({ ...formData, vectorDbCid: e.target.value })}
-                  />
+                  <Label htmlFor="initialData">Initial Data File</Label>
+                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center">
+                    {selectedFile ? (
+                      <div className="flex items-center justify-between bg-muted/50 rounded p-2">
+                        <div className="flex items-center gap-2">
+                          <Upload className="h-4 w-4" />
+                          <span className="text-sm font-medium">{selectedFile.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedFile(null)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div>
+                        <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                        <div className="text-sm font-medium mb-1">Upload Initial Data</div>
+                        <div className="text-xs text-muted-foreground mb-3">
+                          PDF, CSV, TXT, or other data files (Max 10MB)
+                        </div>
+                        <Input
+                          type="file"
+                          accept=".pdf,.csv,.txt,.json,.xlsx,.xls,.doc,.docx"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              if (file.size > 10 * 1024 * 1024) {
+                                toast({
+                                  title: "File too large",
+                                  description: "Please select a file smaller than 10MB",
+                                  variant: "destructive",
+                                })
+                                return
+                              }
+                              setSelectedFile(file)
+                            }
+                          }}
+                          className="cursor-pointer"
+                        />
+                      </div>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Leave empty for default configuration
+                    Required: Upload initial data to prevent cold start issues and provide training data
                   </p>
                 </div>
               </div>
@@ -226,24 +327,10 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="initialDataToken">Initial Data Tokens</Label>
-                    <Input
-                      id="initialDataToken"
-                      type="number"
-                      min="1"
-                      value={formData.initialDataToken}
-                      onChange={(e) => setFormData({ ...formData, initialDataToken: Number.parseInt(e.target.value) })}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Initial token amount for campaign creator
-                    </p>
-                  </div>
-
                   <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
                     <div className="text-sm font-medium text-blue-800 dark:text-blue-200">Token Economics</div>
                     <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                      You'll receive {formData.initialDataToken} data tokens as the campaign creator.
+                      Initial data tokens will be calculated automatically by the backend based on your uploaded file.
                       Contributors can earn more tokens by providing datasets.
                     </div>
                   </div>
@@ -315,12 +402,8 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
                     <Badge>{formData.category} AI</Badge>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Initial Data Tokens</div>
-                    <div className="font-medium">{formData.initialDataToken.toLocaleString()} tokens</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Vector DB CID</div>
-                    <div className="font-medium text-xs">{formData.vectorDbCid || "Default"}</div>
+                    <div className="text-sm text-muted-foreground">Initial Data File</div>
+                    <div className="font-medium text-xs">{selectedFile?.name || "None"}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Input Token Price</div>
@@ -347,8 +430,8 @@ export function CreateCampaignModal({ isOpen, onClose }: CreateCampaignModalProp
                     <div>
                       <div className="font-medium text-blue-800 dark:text-blue-200">Campaign Creation</div>
                       <div className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                        This will create a new campaign on the blockchain with the parameters above.
-                        You will receive {formData.initialDataToken} initial data tokens and become the campaign owner.
+                        This will create a new campaign via API call with the parameters above.
+                        Your wallet address will be used as the owner and the uploaded file will provide initial training data to prevent cold start issues.
                       </div>
                     </div>
                   </div>

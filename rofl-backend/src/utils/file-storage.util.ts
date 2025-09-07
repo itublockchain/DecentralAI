@@ -138,9 +138,48 @@ export class FileStorageUtil {
     }
 
     /**
-     * Load campaign vectors from file
+     * Save campaign vectors to file (UUID-based)
      */
-    static async loadCampaignVectors(campaignId: number): Promise<VectorEmbedding[]> {
+    static async saveCampaignVectors(vectorDbUuid: string, vectors: VectorEmbedding[]): Promise<void> {
+        return this.saveVectorsByUUID(vectorDbUuid, vectors);
+    }
+
+    /**
+     * Load campaign vectors from file (UUID-based)
+     */
+    static async loadCampaignVectors(vectorDbUuid: string): Promise<VectorEmbedding[]> {
+        return this.loadVectorsByUUID(vectorDbUuid);
+    }
+
+    /**
+     * Delete campaign vectors file (UUID-based)
+     */
+    static async deleteCampaignVectors(vectorDbUuid: string): Promise<void> {
+        try {
+            const filename = `${vectorDbUuid}.json`;
+            const filepath = path.join(this.STORAGE_DIR, filename);
+
+            if (fs.existsSync(filepath)) {
+                await fs.promises.unlink(filepath);
+                LoggerUtil.logServiceOperation('FileStorageUtil', 'deleteCampaignVectors', {
+                    vectorDbUuid,
+                    filepath,
+                    deleted: true
+                });
+            }
+
+        } catch (error) {
+            LoggerUtil.logServiceError('FileStorageUtil', 'deleteCampaignVectors', error, {
+                vectorDbUuid
+            });
+            throw new Error(`Failed to delete vectors for UUID ${vectorDbUuid}`);
+        }
+    }
+
+    /**
+     * Load campaign vectors from file (legacy campaignId-based)
+     */
+    static async loadCampaignVectorsLegacy(campaignId: number): Promise<VectorEmbedding[]> {
         try {
             const filename = `campaign_${campaignId}_vectors.json`;
             const filepath = path.join(this.STORAGE_DIR, filename);
@@ -203,16 +242,16 @@ export class FileStorageUtil {
     }
 
     /**
-     * Delete campaign vectors file
+     * Delete campaign vectors file (legacy campaignId-based)
      */
-    static async deleteCampaignVectors(campaignId: number): Promise<void> {
+    static async deleteCampaignVectorsLegacy(campaignId: number): Promise<void> {
         try {
             const filename = `campaign_${campaignId}_vectors.json`;
             const filepath = path.join(this.STORAGE_DIR, filename);
 
             if (fs.existsSync(filepath)) {
                 await fs.promises.unlink(filepath);
-                LoggerUtil.logServiceOperation('FileStorageUtil', 'deleteCampaignVectors', {
+                LoggerUtil.logServiceOperation('FileStorageUtil', 'deleteCampaignVectorsLegacy', {
                     campaignId,
                     filepath,
                     deleted: true
@@ -220,7 +259,7 @@ export class FileStorageUtil {
             }
 
         } catch (error) {
-            LoggerUtil.logServiceError('FileStorageUtil', 'deleteCampaignVectors', error, {
+            LoggerUtil.logServiceError('FileStorageUtil', 'deleteCampaignVectorsLegacy', error, {
                 campaignId
             });
             throw new Error(`Failed to delete vectors for campaign ${campaignId}`);
@@ -291,11 +330,11 @@ export class FileStorageUtil {
     }
 
     /**
-     * Backup campaign vectors with timestamp
+     * Backup campaign vectors with timestamp (legacy campaignId-based)
      */
-    static async backupCampaignVectors(campaignId: number): Promise<string> {
+    static async backupCampaignVectorsLegacy(campaignId: number): Promise<string> {
         try {
-            const vectors = await this.loadCampaignVectors(campaignId);
+            const vectors = await this.loadCampaignVectorsLegacy(campaignId);
             if (vectors.length === 0) {
                 throw new Error('No vectors to backup');
             }

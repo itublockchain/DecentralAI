@@ -1,17 +1,16 @@
 import { 
     VectorStore, 
-    RAGUtil, 
     OllamaService, 
     LoggerUtil, 
-    ValidationUtil, 
+    SearchResult, 
     ResponseUtil 
 } from '../utils';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { SearchResult, DocumentChunk } from '../utils';
 
 export interface QueryRequest {
     query: string;
     campaignId: number;
+    vectorDbUuid: string;
     topK?: number;
     minSimilarity?: number;
 }
@@ -68,19 +67,24 @@ export class CampaignQueryService {
         const startTime = Date.now();
         
         try {
-            const { query, campaignId, topK = 5, minSimilarity = 0.1 } = queryData;
+            const { query, campaignId, vectorDbUuid, topK = 5, minSimilarity = 0.1 } = queryData;
 
             // Validate input
             if (!query || query.trim().length === 0) {
                 throw new Error('Query cannot be empty');
             }
 
-            if (!Number.isInteger(campaignId) || campaignId <= 0) {
+            if (!Number.isInteger(campaignId) || campaignId < 0) {
                 throw new Error('Valid campaign ID is required');
+            }
+
+            if (!vectorDbUuid || vectorDbUuid.trim().length === 0) {
+                throw new Error('Vector DB UUID is required');
             }
 
             LoggerUtil.logServiceOperation('CampaignQueryService', 'queryWithRAG - started', {
                 campaignId,
+                vectorDbUuid,
                 queryLength: query.length,
                 topK,
                 minSimilarity,
@@ -97,7 +101,7 @@ export class CampaignQueryService {
 
             // Step 2: Search for relevant chunks in the vector store
             const searchResults = await this.vectorStore.searchSimilar(
-                campaignId,
+                vectorDbUuid,
                 queryEmbedding,
                 topK,
                 minSimilarity
@@ -243,11 +247,11 @@ Please answer based on the context provided above.`;
     /**
      * Get campaign knowledge base statistics
      */
-    async getCampaignStats(campaignId: number) {
+    async getCampaignStats(vectorDbUuid: string) {
         try {
-            return await this.vectorStore.getCampaignStats(campaignId);
+            return await this.vectorStore.getCampaignStats(vectorDbUuid);
         } catch (error) {
-            LoggerUtil.logServiceError('CampaignQueryService', 'getCampaignStats', error, { campaignId });
+            LoggerUtil.logServiceError('CampaignQueryService', 'getCampaignStats', error, { vectorDbUuid });
             throw error;
         }
     }

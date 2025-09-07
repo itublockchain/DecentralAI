@@ -9,8 +9,8 @@ export interface SearchResult {
 
 export class VectorStore {
     private static instance: VectorStore;
-    private vectors: Map<number, VectorEmbedding[]> = new Map(); // campaignId -> embeddings (in-memory cache)
-    private loadedCampaigns: Set<number> = new Set(); // Track which campaigns are loaded in memory
+    private vectors: Map<string, VectorEmbedding[]> = new Map(); // vectorDbUuid -> embeddings (in-memory cache)
+    private loadedCampaigns: Set<string> = new Set(); // Track which campaigns are loaded in memory
 
     private constructor() {
         // Initialize storage directory
@@ -27,29 +27,29 @@ export class VectorStore {
     /**
      * Stores vector embeddings for a campaign (both memory and file system)
      */
-    async storeEmbeddings(campaignId: number, embeddings: VectorEmbedding[]): Promise<void> {
+    async storeEmbeddings(vectorDbUuid: string, embeddings: VectorEmbedding[]): Promise<void> {
         try {
             if (!embeddings || embeddings.length === 0) {
                 throw new Error('No embeddings provided');
             }
 
             // Ensure campaign is loaded in memory
-            await this.ensureCampaignLoaded(campaignId);
+            await this.ensureCampaignLoaded(vectorDbUuid);
 
             // Get existing embeddings for campaign or initialize empty array
-            const existingEmbeddings = this.vectors.get(campaignId) || [];
+            const existingEmbeddings = this.vectors.get(vectorDbUuid) || [];
             
             // Add new embeddings
             const updatedEmbeddings = [...existingEmbeddings, ...embeddings];
             
             // Update in-memory cache
-            this.vectors.set(campaignId, updatedEmbeddings);
+            this.vectors.set(vectorDbUuid, updatedEmbeddings);
             
             // Save to file system
-            await FileStorageUtil.saveCampaignVectors(campaignId, updatedEmbeddings);
+            await FileStorageUtil.saveCampaignVectors(vectorDbUuid, updatedEmbeddings);
 
             LoggerUtil.logServiceOperation('VectorStore', 'storeEmbeddings', {
-                campaignId,
+                vectorDbUuid,
                 newEmbeddings: embeddings.length,
                 totalEmbeddings: updatedEmbeddings.length,
                 vectorDimension: embeddings[0]?.vector.length || 0,
@@ -57,7 +57,7 @@ export class VectorStore {
             });
         } catch (error) {
             LoggerUtil.logServiceError('VectorStore', 'storeEmbeddings', error, {
-                campaignId,
+                vectorDbUuid,
                 embeddingCount: embeddings?.length
             });
             throw new Error(`Failed to store embeddings: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -67,24 +67,24 @@ export class VectorStore {
     /**
      * Ensure campaign vectors are loaded in memory
      */
-    private async ensureCampaignLoaded(campaignId: number): Promise<void> {
-        if (!this.loadedCampaigns.has(campaignId)) {
+    private async ensureCampaignLoaded(vectorDbUuid: string): Promise<void> {
+        if (!this.loadedCampaigns.has(vectorDbUuid)) {
             try {
-                const vectors = await FileStorageUtil.loadCampaignVectors(campaignId);
-                this.vectors.set(campaignId, vectors);
-                this.loadedCampaigns.add(campaignId);
+                const vectors = await FileStorageUtil.loadCampaignVectors(vectorDbUuid);
+                this.vectors.set(vectorDbUuid, vectors);
+                this.loadedCampaigns.add(vectorDbUuid);
                 
                 LoggerUtil.logServiceOperation('VectorStore', 'ensureCampaignLoaded', {
-                    campaignId,
+                    vectorDbUuid,
                     loadedVectors: vectors.length
                 });
             } catch (error) {
                 LoggerUtil.logServiceError('VectorStore', 'ensureCampaignLoaded', error, {
-                    campaignId
+                    vectorDbUuid
                 });
                 // Set empty array if loading fails
-                this.vectors.set(campaignId, []);
-                this.loadedCampaigns.add(campaignId);
+                this.vectors.set(vectorDbUuid, []);
+                this.loadedCampaigns.add(vectorDbUuid);
             }
         }
     }
@@ -93,20 +93,20 @@ export class VectorStore {
      * Searches for similar vectors using cosine similarity
      */
     async searchSimilar(
-        campaignId: number, 
+        vectorDbUuid: string, 
         queryVector: number[], 
         topK: number = 5,
         minSimilarity: number = 0.1
     ): Promise<SearchResult[]> {
         try {
             // Ensure campaign is loaded in memory
-            await this.ensureCampaignLoaded(campaignId);
+            await this.ensureCampaignLoaded(vectorDbUuid);
             
-            const campaignEmbeddings = this.vectors.get(campaignId);
+            const campaignEmbeddings = this.vectors.get(vectorDbUuid);
             
             if (!campaignEmbeddings || campaignEmbeddings.length === 0) {
                 LoggerUtil.logServiceOperation('VectorStore', 'searchSimilar - no embeddings', {
-                    campaignId,
+                    vectorDbUuid,
                     queryVectorLength: queryVector.length
                 });
                 return [];
@@ -131,7 +131,7 @@ export class VectorStore {
             const topResults = results.slice(0, topK);
 
             LoggerUtil.logServiceOperation('VectorStore', 'searchSimilar', {
-                campaignId,
+                vectorDbUuid,
                 totalEmbeddings: campaignEmbeddings.length,
                 matchingResults: results.length,
                 topKResults: topResults.length,
@@ -141,7 +141,7 @@ export class VectorStore {
             return topResults;
         } catch (error) {
             LoggerUtil.logServiceError('VectorStore', 'searchSimilar', error, {
-                campaignId,
+                vectorDbUuid,
                 queryVectorLength: queryVector.length,
                 topK,
                 minSimilarity
@@ -153,22 +153,22 @@ export class VectorStore {
     /**
      * Gets all embeddings for a campaign
      */
-    async getCampaignEmbeddings(campaignId: number): Promise<VectorEmbedding[]> {
-        await this.ensureCampaignLoaded(campaignId);
-        return this.vectors.get(campaignId) || [];
+    async getCampaignEmbeddings(vectorDbUuid: string): Promise<VectorEmbedding[]> {
+        await this.ensureCampaignLoaded(vectorDbUuid);
+        return this.vectors.get(vectorDbUuid) || [];
     }
 
     /**
      * Gets statistics for a campaign's embeddings
      */
-    async getCampaignStats(campaignId: number): Promise<{
+    async getCampaignStats(vectorDbUuid: string): Promise<{
         totalEmbeddings: number;
         totalChunks: number;
         avgVectorDimension: number;
         files: string[];
     }> {
-        await this.ensureCampaignLoaded(campaignId);
-        const embeddings = this.vectors.get(campaignId) || [];
+        await this.ensureCampaignLoaded(vectorDbUuid);
+        const embeddings = this.vectors.get(vectorDbUuid) || [];
         
         const uniqueFiles = new Set<string>();
         let totalDimensions = 0;
@@ -189,23 +189,23 @@ export class VectorStore {
     /**
      * Clears all embeddings for a campaign (memory and file system)
      */
-    async clearCampaign(campaignId: number): Promise<void> {
+    async clearCampaign(vectorDbUuid: string): Promise<void> {
         try {
             // Clear from memory
-            this.vectors.delete(campaignId);
-            this.loadedCampaigns.delete(campaignId);
+            this.vectors.delete(vectorDbUuid);
+            this.loadedCampaigns.delete(vectorDbUuid);
             
             // Delete from file system
-            await FileStorageUtil.deleteCampaignVectors(campaignId);
+            await FileStorageUtil.deleteCampaignVectors(vectorDbUuid);
             
             LoggerUtil.logServiceOperation('VectorStore', 'clearCampaign', { 
-                campaignId,
+                vectorDbUuid,
                 clearedFromMemory: true,
                 clearedFromFile: true
             });
         } catch (error) {
-            LoggerUtil.logServiceError('VectorStore', 'clearCampaign', error, { campaignId });
-            throw new Error(`Failed to clear campaign ${campaignId}`);
+            LoggerUtil.logServiceError('VectorStore', 'clearCampaign', error, { vectorDbUuid });
+            throw new Error(`Failed to clear campaign ${vectorDbUuid}`);
         }
     }
 
